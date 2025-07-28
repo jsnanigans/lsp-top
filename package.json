@@ -1,0 +1,26 @@
+{
+  "name": "lsp-top",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/cli.js",
+  "bin": {
+    "lsp-top": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/cli.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "packageManager": "pnpm@8.15.0",
+  "devDependencies": {
+    "@types/node": "^24.1.0",
+    "@vtsls/language-server": "^0.2.9",
+    "commander": "^14.0.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.8.3"
+  }
+}
