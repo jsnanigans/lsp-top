@@ -72,7 +72,10 @@ class LSPClient {
                 reject(error);
             });
             this.process.on('exit', (code) => {
-                console.error(`LSP server exited with code ${code}`);
+                // Only log if unexpected exit
+                if (code !== 0 && code !== null) {
+                    console.error(`LSP server exited with code ${code}`);
+                }
             });
             setTimeout(() => {
                 // console.log('LSP server started');
@@ -81,6 +84,7 @@ class LSPClient {
         });
     }
     handleMessage(message) {
+        // console.log('[LSP] Received message:', JSON.stringify(message, null, 2).slice(0, 200) + '...');
         if (message.id !== undefined && this.responseHandlers.has(message.id)) {
             const handler = this.responseHandlers.get(message.id);
             this.responseHandlers.delete(message.id);
@@ -90,6 +94,7 @@ class LSPClient {
             if (message.method === 'textDocument/publishDiagnostics') {
                 const uri = message.params?.uri;
                 const diagnostics = message.params?.diagnostics || [];
+                // console.log('[LSP] Diagnostics received for', uri, ':', diagnostics.length, 'items');
                 if (uri) {
                     this.diagnostics.set(uri, diagnostics);
                 }
@@ -111,7 +116,12 @@ class LSPClient {
             params
         };
         return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                this.responseHandlers.delete(id);
+                reject(new Error(`Request ${method} timed out after 10 seconds`));
+            }, 10000);
             this.responseHandlers.set(id, (response) => {
+                clearTimeout(timeout);
                 if (response.error) {
                     reject(new Error(response.error.message));
                 }
@@ -126,6 +136,7 @@ class LSPClient {
         if (!this.process?.stdin) {
             throw new Error('LSP process not started');
         }
+        // console.log('[LSP] Sending message:', JSON.stringify(message, null, 2));
         const content = JSON.stringify(message);
         const header = `Content-Length: ${Buffer.byteLength(content)}\r\n\r\n`;
         this.process.stdin.write(header + content);
@@ -134,12 +145,43 @@ class LSPClient {
         await this.sendRequest('initialize', {
             processId: process.pid,
             rootUri: `file://${this.workspaceRoot}`,
+            rootPath: this.workspaceRoot,
+            workspaceFolders: [{
+                    uri: `file://${this.workspaceRoot}`,
+                    name: 'workspace'
+                }],
             capabilities: {
+                workspace: {
+                    workspaceFolders: true,
+                    configuration: true
+                },
                 textDocument: {
                     synchronization: {
                         openClose: true,
                         change: 1
+                    },
+                    publishDiagnostics: {
+                        relatedInformation: true,
+                        versionSupport: false,
+                        tagSupport: {
+                            valueSet: [1, 2]
+                        }
+                    },
+                    diagnostic: {
+                        dynamicRegistration: false,
+                        relatedDocumentSupport: false
                     }
+                }
+            },
+            initializationOptions: {
+                preferences: {
+                    includeInlayParameterNameHints: "all",
+                    includeInlayParameterNameHintsWhenArgumentMatchesName: true,
+                    includeInlayFunctionParameterTypeHints: true,
+                    includeInlayVariableTypeHints: true,
+                    includeInlayPropertyDeclarationTypeHints: true,
+                    includeInlayFunctionLikeReturnTypeHints: true,
+                    includeInlayEnumMemberValueHints: true
                 }
             }
         });
@@ -147,16 +189,38 @@ class LSPClient {
     }
     async shutdown() {
         if (this.process) {
-            await this.sendRequest('shutdown');
-            this.sendMessage({ jsonrpc: '2.0', method: 'exit' });
-            this.process.kill();
-            this.process = null;
+            try {
+                await this.sendRequest('shutdown');
+                this.sendMessage({ jsonrpc: '2.0', method: 'exit' });
+                // Give the process a moment to exit gracefully
+                await new Promise(resolve => setTimeout(resolve, 100));
+                if (this.process && !this.process.killed) {
+                    this.process.kill();
+                }
+                this.process = null;
+            }
+            catch (error) {
+                // Force kill if shutdown fails
+                if (this.process && !this.process.killed) {
+                    this.process.kill();
+                }
+                this.process = null;
+            }
         }
     }
     async getDiagnostics(uri) {
-        return this.sendRequest('textDocument/diagnostic', {
-            textDocument: { uri }
-        });
+        // First try the pull-based diagnostic request
+        try {
+            const result = await this.sendRequest('textDocument/diagnostic', {
+                textDocument: { uri }
+            });
+            return result;
+        }
+        catch (error) {
+            // console.log('[LSP] Pull-based diagnostics failed, returning push-based diagnostics');
+            // Fall back to push-based diagnostics
+            return { diagnostics: this.getDiagnosticsForUri(uri) };
+        }
     }
     async getDefinition(uri, line, character) {
         return this.sendRequest('textDocument/definition', {

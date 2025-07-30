@@ -20,15 +20,15 @@ const user: User = {
 
 function main() {
   logger.info('Application started');
-  
+
   // Test calculator
   const result = calculator.add(5, 3);
   console.log(`5 + 3 = ${result}`);
-  
+
   // Test user service
   const users = userService.getAllUsers();
   console.log(`Found ${users.length} users`);
-  
+
   // Intentional error: calling method that doesn't exist
   calculator.subtract(10, 5);
 }
