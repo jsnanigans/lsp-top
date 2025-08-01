@@ -5,6 +5,7 @@ import { log } from '../logger';
 
 export class TypeScriptLSP {
   private client: LSPClient;
+  private openDocuments = new Set<string>();
 
   constructor(private workspaceRoot: string) {
     const vtsls = this.findVtsls();
@@ -44,69 +45,71 @@ export class TypeScriptLSP {
 
   async getDiagnostics(filePath: string): Promise<any> {
     const uri = `file://${filePath}`;
-    
-    // First, we need to open the document (this is a notification, not a request)
     const content = fs.readFileSync(filePath, 'utf-8');
-    this.client.sendMessage({
-      jsonrpc: '2.0',
-      method: 'textDocument/didOpen',
-      params: {
-        textDocument: {
-          uri,
-          languageId: 'typescript',
-          version: 1,
-          text: content
+    
+    if (this.openDocuments.has(uri)) {
+      // Document is already open, send a change notification to trigger re-analysis
+      log(`Document ${uri} is already open, sending change notification.`);
+      this.client.sendMessage({
+        jsonrpc: '2.0',
+        method: 'textDocument/didChange',
+        params: {
+          textDocument: {
+            uri,
+            version: Date.now() // Use timestamp as version
+          },
+          contentChanges: [{
+            text: content
+          }]
         }
-      }
-    });
+      });
+    } else {
+      // First time opening this document
+      log(`Opening document ${uri}...`);
+      this.client.sendMessage({
+        jsonrpc: '2.0',
+        method: 'textDocument/didOpen',
+        params: {
+          textDocument: {
+            uri,
+            languageId: 'typescript',
+            version: 1,
+            text: content
+          }
+        }
+      });
+      this.openDocuments.add(uri);
+    }
+
+    // Give the server more time to process and push diagnostics
+    await new Promise(resolve => setTimeout(resolve, 1000));
     
-    // Send a didChangeConfiguration to ensure TypeScript is fully initialized
-    this.client.sendMessage({
-      jsonrpc: '2.0',
-      method: 'workspace/didChangeConfiguration',
-      params: {
-        settings: {}
-      }
-    });
-    
-    // Wait longer for TypeScript to fully analyze the file
-    await new Promise(resolve => setTimeout(resolve, 5000));
-    
-    // Try to get diagnostics using the pull-based method first
-    const result = await this.client.getDiagnostics(uri);
-    return result;
+    // Return the diagnostics from the client's cache
+    return this.client.getDiagnostics(uri);
   }
 
   async getDefinition(filePath: string, line: number, character: number): Promise<any> {
     const uri = `file://${filePath}`;
-    
-    // First, we need to open the document
     const content = fs.readFileSync(filePath, 'utf-8');
-    this.client.sendMessage({
-      jsonrpc: '2.0',
-      method: 'textDocument/didOpen',
-      params: {
-        textDocument: {
-          uri,
-          languageId: 'typescript',
-          version: 1,
-          text: content
+    
+    if (!this.openDocuments.has(uri)) {
+      this.client.sendMessage({
+        jsonrpc: '2.0',
+        method: 'textDocument/didOpen',
+        params: {
+          textDocument: {
+            uri,
+            languageId: 'typescript',
+            version: 1,
+            text: content
+          }
         }
-      }
-    });
-    
-    // Send a didChangeConfiguration to ensure TypeScript is initialized
-    this.client.sendMessage({
-      jsonrpc: '2.0',
-      method: 'workspace/didChangeConfiguration',
-      params: {
-        settings: {}
-      }
-    });
-    
-    // Wait a bit for the document to be processed
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    
+      });
+      this.openDocuments.add(uri);
+      // Give the server a moment to process
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
     return this.client.getDefinition(uri, line - 1, character - 1);
   }
 }

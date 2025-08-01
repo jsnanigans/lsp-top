@@ -120,8 +120,17 @@ export class LSPClient {
         if (uri) {
           this.diagnostics.set(uri, diagnostics);
         }
+      } else if (message.method === 'workspace/configuration') {
+        // Handle workspace configuration request from server
+        log('[LSP] Server requesting workspace configuration');
+        const response: LSPMessage = {
+          jsonrpc: '2.0',
+          id: message.id,
+          result: message.params?.items?.map(() => ({})) || [{}]
+        };
+        this.sendMessage(response);
       } else if (message.method !== 'window/logMessage') {
-        console.log('Notification:', message.method);
+        log('Unhandled notification:', message.method);
       }
     }
   }

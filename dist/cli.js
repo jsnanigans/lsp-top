@@ -36,19 +36,58 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 const commander_1 = require("commander");
 const config_1 = require("./config");
-const path_utils_1 = require("./path-utils");
-const typescript_1 = require("./servers/typescript");
 const path = __importStar(require("path"));
 const logger_1 = require("./logger");
+const net = __importStar(require("net"));
+const child_process_1 = require("child_process");
+const fs = __importStar(require("fs"));
+const SOCKET_PATH = '/tmp/lsp-top.sock';
+const LOG_FILE = '/tmp/lsp-top.log';
 const program = new commander_1.Command();
 const config = new config_1.ConfigManager();
 program
     .name('lsp-top')
     .description('LSP server wrapper for running language server commands from anywhere')
-    .version('0.1.0')
-    .option('-v, --verbose', 'Enable verbose logging');
-program.on('option:verbose', () => {
-    (0, logger_1.setVerbose)(true);
+    .version('0.1.0');
+program
+    .command('start-server')
+    .description('Start the LSP daemon')
+    .option('-v, --verbose', 'Enable verbose logging')
+    .action((options) => {
+    const args = options.verbose ? ['--verbose'] : [];
+    const daemon = (0, child_process_1.spawn)(process.argv[0], [path.resolve(__dirname, 'daemon.js'), ...args], {
+        detached: true,
+        stdio: 'ignore',
+    });
+    daemon.unref();
+    console.log('LSP daemon started.');
+});
+program
+    .command('stop-server')
+    .description('Stop the LSP daemon')
+    .action(() => {
+    const client = net.connect(SOCKET_PATH, () => {
+        client.write(JSON.stringify({ action: 'stop' }));
+    });
+    client.on('data', () => {
+        console.log('LSP daemon stopped.');
+        client.end();
+    });
+    client.on('error', () => {
+        console.error('Failed to connect to daemon. Is it running?');
+        process.exit(1);
+    });
+});
+program
+    .command('logs')
+    .description('Show daemon logs')
+    .action(() => {
+    if (fs.existsSync(LOG_FILE)) {
+        console.log(fs.readFileSync(LOG_FILE, 'utf-8'));
+    }
+    else {
+        console.log('Log file not found.');
+    }
 });
 program
     .command('init <alias> [path]')
@@ -94,57 +133,55 @@ program
 program
     .command('run <alias> <action> [args...]')
     .description('Run an LSP action for a project')
-    .action(async (alias, action, args) => {
-    (0, logger_1.log)(`Running command: alias=${alias}, action=${action}, args=[${args.join(', ')}]`);
+    .option('-v, --verbose', 'Enable verbose logging')
+    .action(async (alias, action, args, options) => {
+    (0, logger_1.setVerbose)(options.verbose);
     const projectPath = config.getPath(alias);
     if (!projectPath) {
         console.error(`Error: Project '${alias}' not found. Use 'lsp-top list' to see available projects.`);
         process.exit(1);
     }
-    (0, logger_1.log)(`Project path resolved to: ${projectPath}`);
-    try {
-        const lsp = new typescript_1.TypeScriptLSP(projectPath);
-        await lsp.start();
-        switch (action) {
-            case 'diagnostics': {
-                if (!args[0]) {
-                    console.error('Error: File path required for diagnostics');
-                    process.exit(1);
+    const client = net.connect(SOCKET_PATH, () => {
+        const request = {
+            alias,
+            action,
+            args,
+            projectPath,
+            verbose: options.verbose,
+        };
+        client.write(JSON.stringify(request));
+    });
+    let buffer = '';
+    client.on('data', (data) => {
+        buffer += data.toString();
+        let boundary = buffer.indexOf('\n');
+        while (boundary !== -1) {
+            const chunk = buffer.substring(0, boundary);
+            buffer = buffer.substring(boundary + 1);
+            if (chunk) {
+                try {
+                    const response = JSON.parse(chunk);
+                    if (response.type === 'log' && options.verbose) {
+                        console.log(response.data);
+                    }
+                    else if (response.type === 'result') {
+                        console.log(JSON.stringify(response.data, null, 2));
+                    }
+                    else if (response.type === 'error') {
+                        console.error('Error:', response.message);
+                    }
                 }
-                const filePath = (0, path_utils_1.resolveProjectPath)(projectPath, args[0]);
-                (0, logger_1.log)(`Getting diagnostics for: ${filePath}`);
-                const diagnostics = await lsp.getDiagnostics(filePath);
-                console.log(JSON.stringify(diagnostics, null, 2));
-                break;
+                catch (e) {
+                    console.error('Error parsing daemon response:', e, 'Chunk:', chunk);
+                }
             }
-            case 'definition': {
-                if (!args[0]) {
-                    console.error('Error: File path and position required (e.g., file.ts:10:5)');
-                    process.exit(1);
-                }
-                const [fileArg, lineStr, charStr] = args[0].split(':');
-                const filePath = (0, path_utils_1.resolveProjectPath)(projectPath, fileArg);
-                const line = parseInt(lineStr, 10);
-                const char = parseInt(charStr, 10);
-                if (isNaN(line) || isNaN(char)) {
-                    console.error('Error: Invalid position format. Use file.ts:line:column');
-                    process.exit(1);
-                }
-                (0, logger_1.log)(`Getting definition at ${filePath}:${line}:${char}`);
-                const definition = await lsp.getDefinition(filePath, line, char);
-                console.log(JSON.stringify(definition, null, 2));
-                break;
-            }
-            default:
-                console.error(`Error: Unknown action '${action}'`);
-                console.log('Available actions: diagnostics, definition');
-                process.exit(1);
+            boundary = buffer.indexOf('\n');
         }
-        await lsp.stop();
-    }
-    catch (error) {
-        console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
+    });
+    client.on('error', (err) => {
+        console.error('Failed to connect to daemon. Is it running?');
+        (0, logger_1.log)('Connection error:', err.message);
         process.exit(1);
-    }
+    });
 });
-program.parse();
+program.parse(process.argv);
