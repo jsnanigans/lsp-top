@@ -1,12 +1,14 @@
 import { LSPClient } from '../lsp-client';
 import * as path from 'path';
 import * as fs from 'fs';
+import { log } from '../logger';
 
 export class TypeScriptLSP {
   private client: LSPClient;
 
   constructor(private workspaceRoot: string) {
     const vtsls = this.findVtsls();
+    log(`Using vtsls at: ${vtsls}`);
     this.client = new LSPClient(
       vtsls,
       ['--stdio'],
@@ -22,6 +24,7 @@ export class TypeScriptLSP {
     ];
 
     for (const vtsPath of possiblePaths) {
+      log(`Checking for vtsls at: ${vtsPath}`);
       if (vtsPath === 'vtsls' || fs.existsSync(vtsPath)) {
         return vtsPath;
       }

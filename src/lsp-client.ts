@@ -1,5 +1,6 @@
 import { spawn, ChildProcess } from 'child_process';
 import * as readline from 'readline';
+import { log } from './logger';
 
 export interface LSPMessage {
   jsonrpc: string;
@@ -23,8 +24,8 @@ export class LSPClient {
 
   async start(): Promise<void> {
     return new Promise((resolve, reject) => {
-      // console.log(`Starting LSP: ${this.command} ${this.args.join(' ')}`);
-      // console.log(`Working directory: ${this.workspaceRoot}`);
+      log(`Starting LSP: ${this.command} ${this.args.join(' ')}`);
+      log(`Working directory: ${this.workspaceRoot}`);
       
       this.process = spawn(this.command, this.args, {
         cwd: this.workspaceRoot,
@@ -72,7 +73,8 @@ export class LSPClient {
 
               contentLength = 0;
               isReadingHeaders = true;
-            } else {
+            }
+            else {
               break;
             }
           }
@@ -96,7 +98,7 @@ export class LSPClient {
       });
 
       setTimeout(() => {
-        // console.log('LSP server started');
+        log('LSP server started');
         resolve();
       }, 100);
     });
@@ -105,7 +107,7 @@ export class LSPClient {
   private diagnostics: Map<string, any[]> = new Map();
   
   private handleMessage(message: LSPMessage): void {
-    // console.log('[LSP] Received message:', JSON.stringify(message, null, 2).slice(0, 200) + '...');
+    log('[LSP] Received message:', JSON.stringify(message, null, 2).slice(0, 200) + '...');
     if (message.id !== undefined && this.responseHandlers.has(message.id)) {
       const handler = this.responseHandlers.get(message.id)!;
       this.responseHandlers.delete(message.id);
@@ -114,7 +116,7 @@ export class LSPClient {
       if (message.method === 'textDocument/publishDiagnostics') {
         const uri = message.params?.uri;
         const diagnostics = message.params?.diagnostics || [];
-        // console.log('[LSP] Diagnostics received for', uri, ':', diagnostics.length, 'items');
+        log('[LSP] Diagnostics received for', uri, ':', diagnostics.length, 'items');
         if (uri) {
           this.diagnostics.set(uri, diagnostics);
         }
@@ -161,7 +163,7 @@ export class LSPClient {
       throw new Error('LSP process not started');
     }
 
-    // console.log('[LSP] Sending message:', JSON.stringify(message, null, 2));
+    log('[LSP] Sending message:', JSON.stringify(message, null, 2));
     const content = JSON.stringify(message);
     const header = `Content-Length: ${Buffer.byteLength(content)}\r\n\r\n`;
     this.process.stdin.write(header + content);
@@ -246,7 +248,7 @@ export class LSPClient {
       });
       return result;
     } catch (error) {
-      // console.log('[LSP] Pull-based diagnostics failed, returning push-based diagnostics');
+      log('[LSP] Pull-based diagnostics failed, returning push-based diagnostics');
       // Fall back to push-based diagnostics
       return { diagnostics: this.getDiagnosticsForUri(uri) };
     }

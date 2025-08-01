@@ -37,10 +37,12 @@ exports.TypeScriptLSP = void 0;
 const lsp_client_1 = require("../lsp-client");
 const path = __importStar(require("path"));
 const fs = __importStar(require("fs"));
+const logger_1 = require("../logger");
 class TypeScriptLSP {
     constructor(workspaceRoot) {
         this.workspaceRoot = workspaceRoot;
         const vtsls = this.findVtsls();
+        (0, logger_1.log)(`Using vtsls at: ${vtsls}`);
         this.client = new lsp_client_1.LSPClient(vtsls, ['--stdio'], workspaceRoot);
     }
     findVtsls() {
@@ -50,6 +52,7 @@ class TypeScriptLSP {
             'vtsls' // Try global/PATH installation
         ];
         for (const vtsPath of possiblePaths) {
+            (0, logger_1.log)(`Checking for vtsls at: ${vtsPath}`);
             if (vtsPath === 'vtsls' || fs.existsSync(vtsPath)) {
                 return vtsPath;
             }

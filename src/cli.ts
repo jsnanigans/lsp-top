@@ -5,6 +5,7 @@ import { ConfigManager } from './config';
 import { resolveProjectPath } from './path-utils';
 import { TypeScriptLSP } from './servers/typescript';
 import * as path from 'path';
+import { log, setVerbose } from './logger';
 
 const program = new Command();
 const config = new ConfigManager();
@@ -12,7 +13,12 @@ const config = new ConfigManager();
 program
   .name('lsp-top')
   .description('LSP server wrapper for running language server commands from anywhere')
-  .version('0.1.0');
+  .version('0.1.0')
+  .option('-v, --verbose', 'Enable verbose logging');
+
+program.on('option:verbose', () => {
+  setVerbose(true);
+});
 
 program
   .command('init <alias> [path]')
@@ -62,12 +68,15 @@ program
   .command('run <alias> <action> [args...]')
   .description('Run an LSP action for a project')
   .action(async (alias: string, action: string, args: string[]) => {
+    log(`Running command: alias=${alias}, action=${action}, args=[${args.join(', ')}]`);
     const projectPath = config.getPath(alias);
     
     if (!projectPath) {
       console.error(`Error: Project '${alias}' not found. Use 'lsp-top list' to see available projects.`);
       process.exit(1);
     }
+    
+    log(`Project path resolved to: ${projectPath}`);
     
     try {
       const lsp = new TypeScriptLSP(projectPath);
@@ -80,7 +89,7 @@ program
             process.exit(1);
           }
           const filePath = resolveProjectPath(projectPath, args[0]);
-          // console.log(`Getting diagnostics for: ${filePath}`);
+          log(`Getting diagnostics for: ${filePath}`);
           const diagnostics = await lsp.getDiagnostics(filePath);
           console.log(JSON.stringify(diagnostics, null, 2));
           break;
@@ -101,7 +110,7 @@ program
             process.exit(1);
           }
           
-          console.log(`Getting definition at ${filePath}:${line}:${char}`);
+          log(`Getting definition at ${filePath}:${line}:${char}`);
           const definition = await lsp.getDefinition(filePath, line, char);
           console.log(JSON.stringify(definition, null, 2));
           break;
