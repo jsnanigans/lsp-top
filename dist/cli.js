@@ -38,6 +38,7 @@ const commander_1 = require("commander");
 const config_1 = require("./config");
 const path = __importStar(require("path"));
 const logger_1 = require("./logger");
+const errors_1 = require("./errors");
 const net = __importStar(require("net"));
 const child_process_1 = require("child_process");
 const fs = __importStar(require("fs"));
@@ -48,19 +49,78 @@ const config = new config_1.ConfigManager();
 program
     .name('lsp-top')
     .description('LSP server wrapper for running language server commands from anywhere')
-    .version('0.1.0');
+    .version((() => {
+    try {
+        return JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8')).version || '0.0.0';
+    }
+    catch {
+        return '0.0.0';
+    }
+})())
+    .option('-v, --verbose', 'Enable verbose logging')
+    .option('-q, --quiet', 'Suppress non-error output')
+    .option('--json', 'Output machine-readable JSON only')
+    .option('--log-level <level>', 'Set log level (error|warn|info|debug|trace)')
+    .option('--trace <flags>', 'Comma-separated trace flags');
 program
     .command('start-server')
     .description('Start the LSP daemon')
     .option('-v, --verbose', 'Enable verbose logging')
+    .option('-q, --quiet', 'Suppress non-error output')
+    .option('--log-level <level>', 'Set log level (error|warn|info|debug|trace)')
+    .option('--trace <flags>', 'Comma-separated trace flags')
     .action((options) => {
-    const args = options.verbose ? ['--verbose'] : [];
+    const args = [];
+    if (options.verbose)
+        args.push('--verbose');
+    if (options.logLevel)
+        args.push('--log-level', String(options.logLevel));
+    if (options.trace)
+        args.push('--trace', String(options.trace));
     const daemon = (0, child_process_1.spawn)(process.argv[0], [path.resolve(__dirname, 'daemon.js'), ...args], {
         detached: true,
         stdio: 'ignore',
     });
     daemon.unref();
-    console.log('LSP daemon started.');
+    (0, errors_1.printTextAndExit)('LSP daemon started.');
+});
+program
+    .command('metrics').description('Show daemon status')
+    .option('--json', 'Output machine-readable JSON only')
+    .action(() => {
+    const client = net.connect(SOCKET_PATH, () => {
+        client.write(JSON.stringify({ action: 'status' }));
+    });
+    client.on('data', (data) => {
+        try {
+            const info = JSON.parse(data.toString());
+            if (info && info.ok) {
+                if (program.opts().json) {
+                    (0, errors_1.printJsonAndExit)(info);
+                }
+                else {
+                    (0, errors_1.printTextAndExit)(`Daemon: running, sessions=${info.sessions}`);
+                }
+            }
+            else {
+                const msg = (info && info.error) || 'Unknown error';
+                if (program.opts().json)
+                    (0, errors_1.printJsonAndExit)({ ok: false, error: msg, code: 'STATUS_ERROR' }, 'STATUS_ERROR');
+                else
+                    (0, errors_1.printTextAndExit)(`Error: ${msg}`, true, 'STATUS_ERROR');
+            }
+        }
+        catch {
+            (0, errors_1.printTextAndExit)(data.toString());
+        }
+    });
+    client.on('error', () => {
+        const msg = 'Daemon not running';
+        if (program.opts().json)
+            (0, errors_1.printJsonAndExit)({ ok: false, error: msg, code: 'DAEMON_NOT_RUNNING' }, 'DAEMON_NOT_RUNNING');
+        else
+            (0, errors_1.printTextAndExit)(msg, true, 'DAEMON_NOT_RUNNING');
+    });
 });
 program
     .command('stop-server')
@@ -74,19 +134,79 @@ program
         client.end();
     });
     client.on('error', () => {
-        console.error('Failed to connect to daemon. Is it running?');
-        process.exit(1);
+        (0, errors_1.printTextAndExit)('Failed to connect to daemon. Is it running?', true, 'DAEMON_UNAVAILABLE');
     });
 });
 program
     .command('logs')
     .description('Show daemon logs')
-    .action(() => {
-    if (fs.existsSync(LOG_FILE)) {
-        console.log(fs.readFileSync(LOG_FILE, 'utf-8'));
+    .option('--tail <n>', 'Tail last N lines')
+    .option('--follow', 'Follow log output')
+    .action((options) => {
+    const pidFile = '/tmp/lsp-top.pid';
+    const pid = fs.existsSync(pidFile) ? parseInt(fs.readFileSync(pidFile, 'utf-8'), 10) : null;
+    const levelInfo = (() => {
+        try {
+            const content = fs.existsSync(LOG_FILE) ? fs.readFileSync(LOG_FILE, 'utf-8') : '';
+            const lines = content.trim().split('\n');
+            for (let i = lines.length - 1; i >= 0; i--) {
+                const line = lines[i];
+                try {
+                    const obj = JSON.parse(line);
+                    if (obj && typeof obj.level === 'string')
+                        return obj.level;
+                }
+                catch { }
+            }
+            return null;
+        }
+        catch {
+            return null;
+        }
+    })();
+    if (!fs.existsSync(LOG_FILE)) {
+        (0, errors_1.printTextAndExit)('Log file not found.', true, 'STATUS_ERROR');
+        return;
+    }
+    const readAll = () => fs.readFileSync(LOG_FILE, 'utf-8').split('\n');
+    const printHeader = () => {
+        console.log(`PID: ${pid ?? 'unknown'}`);
+        console.log(`Level: ${levelInfo ?? 'unknown'}`);
+        console.log('---');
+    };
+    const output = (lines) => {
+        const filtered = lines.filter(Boolean);
+        if (options.tail) {
+            const n = parseInt(String(options.tail), 10);
+            const start = Math.max(0, filtered.length - (isNaN(n) ? 50 : n));
+            filtered.slice(start).forEach((l) => console.log(l));
+        }
+        else {
+            filtered.forEach((l) => console.log(l));
+        }
+    };
+    if (options.follow) {
+        printHeader();
+        let lastSize = fs.statSync(LOG_FILE).size;
+        output(readAll());
+        const interval = setInterval(() => {
+            try {
+                const stat = fs.statSync(LOG_FILE);
+                if (stat.size > lastSize) {
+                    const content = fs.readFileSync(LOG_FILE, 'utf-8');
+                    const lines = content.split('\n');
+                    output(lines);
+                    lastSize = stat.size;
+                }
+            }
+            catch { }
+        }, 1000);
+        process.on('SIGINT', () => { clearInterval(interval); process.exit(0); });
+        process.on('SIGTERM', () => { clearInterval(interval); process.exit(0); });
     }
     else {
-        console.log('Log file not found.');
+        printHeader();
+        output(readAll());
     }
 });
 program
@@ -96,11 +216,49 @@ program
     try {
         const pathToUse = projectPath || process.cwd();
         config.addAlias(alias, pathToUse);
-        console.log(`✓ Initialized project '${alias}' at ${path.resolve(pathToUse)}`);
+        (0, errors_1.printTextAndExit)(`✓ Initialized project '${alias}' at ${path.resolve(pathToUse)}`);
     }
     catch (error) {
-        console.error(`Error: ${error instanceof Error ? error.message : String(error)}`);
-        process.exit(1);
+        const msg = error instanceof Error ? error.message : String(error);
+        (0, errors_1.printTextAndExit)(`Error: ${msg}`, true, 'GENERAL_ERROR');
+    }
+});
+program
+    .command('configure')
+    .description('Show or set configuration')
+    .option('--set-alias <alias:path>', 'Set alias mapping, e.g., web:/path')
+    .option('--print', 'Print effective config')
+    .option('--env <keys>', 'Comma-separated env keys to include in effective config')
+    .option('--json', 'Output machine-readable JSON only')
+    .action((options) => {
+    if (options.setAlias) {
+        const [alias, p] = String(options.setAlias).split(':');
+        if (!alias || !p) {
+            (0, errors_1.printTextAndExit)('Error: --set-alias requires format alias:path', true, 'BAD_FLAG');
+        }
+        try {
+            config.addAlias(alias, p);
+            if (!options.json)
+                (0, errors_1.printTextAndExit)(`✓ Set ${alias} -> ${p}`);
+            else
+                (0, errors_1.printJsonAndExit)({ ok: true });
+        }
+        catch (e) {
+            const msg = e instanceof Error ? e.message : String(e);
+            if (options.json)
+                (0, errors_1.printJsonAndExit)({ ok: false, error: msg, code: 'CONFIG_SET_ERROR' }, 'CONFIG_SET_ERROR');
+            else
+                (0, errors_1.printTextAndExit)(`Error: ${msg}`, true, 'CONFIG_SET_ERROR');
+        }
+        return;
+    }
+    const keys = options.env ? String(options.env).split(',').map((s) => s.trim()) : [];
+    const eff = config.effectiveConfig(keys);
+    if (options.json || options.print) {
+        console.log(JSON.stringify(eff, null, options.json ? 0 : 2));
+    }
+    else {
+        (0, errors_1.printTextAndExit)('Use --print to display effective config');
     }
 });
 program
@@ -113,7 +271,7 @@ program
         console.log('No projects configured. Use "lsp-top init <alias> [path]" to add one.');
         return;
     }
-    console.log('Configured projects:');
+    (0, errors_1.printTextAndExit)('Configured projects:');
     entries.forEach(([alias, path]) => {
         console.log(`  ${alias} -> ${path}`);
     });
@@ -123,23 +281,59 @@ program
     .description('Remove a project alias')
     .action((alias) => {
     if (config.removeAlias(alias)) {
-        console.log(`✓ Removed project '${alias}'`);
+        (0, errors_1.printTextAndExit)(`✓ Removed project '${alias}'`);
     }
     else {
-        console.error(`Error: Project '${alias}' not found`);
-        process.exit(1);
+        (0, errors_1.printTextAndExit)(`Error: Project '${alias}' not found`, true, 'ALIAS_NOT_FOUND');
     }
+});
+program
+    .command('diagnose [alias]')
+    .description('Diagnose environment and server readiness')
+    .option('--json', 'Output machine-readable JSON only')
+    .action(async (alias, options) => {
+    const checks = { ok: true, node: process.version, hasTypescriptServer: false, alias, projectPath: undefined };
+    try {
+        const pkg = require.resolve('@vtsls/language-server/package.json');
+        checks.hasTypescriptServer = !!pkg;
+    }
+    catch {
+        checks.hasTypescriptServer = false;
+        checks.ok = false;
+    }
+    if (alias) {
+        const p = config.getPath(alias);
+        checks.projectPath = p;
+        if (!p)
+            checks.ok = false;
+    }
+    if (options?.json)
+        (0, errors_1.printJsonAndExit)(checks, checks.ok ? 'OK' : 'DIAGNOSE_FAILED');
+    else
+        (0, errors_1.printTextAndExit)(JSON.stringify(checks, null, 2), !checks.ok, checks.ok ? 'OK' : 'DIAGNOSE_FAILED');
 });
 program
     .command('run <alias> <action> [args...]')
     .description('Run an LSP action for a project')
     .option('-v, --verbose', 'Enable verbose logging')
+    .option('-q, --quiet', 'Suppress non-error output')
+    .option('--json', 'Output machine-readable JSON only')
+    .option('--log-level <level>', 'Set log level (error|warn|info|debug|trace)')
+    .option('--trace <flags>', 'Comma-separated trace flags')
     .action(async (alias, action, args, options) => {
-    (0, logger_1.setVerbose)(options.verbose);
+    const level = (options.logLevel ? String(options.logLevel) : (options.verbose ? 'debug' : 'info'));
+    (0, logger_1.setLogLevel)(level);
+    if (options.trace)
+        (0, logger_1.setTraceFlags)(String(options.trace).split(',').map((s) => s.trim()).filter(Boolean));
     const projectPath = config.getPath(alias);
     if (!projectPath) {
-        console.error(`Error: Project '${alias}' not found. Use 'lsp-top list' to see available projects.`);
-        process.exit(1);
+        const msg = `Project '${alias}' not found. Use 'lsp-top list' to see available projects.`;
+        if (options.json) {
+            (0, errors_1.printJsonAndExit)({ ok: false, error: msg, code: 'ALIAS_NOT_FOUND' }, 'ALIAS_NOT_FOUND');
+        }
+        else {
+            (0, errors_1.printTextAndExit)(`Error: ${msg}`, true, 'ALIAS_NOT_FOUND');
+        }
     }
     const client = net.connect(SOCKET_PATH, () => {
         const request = {
@@ -148,6 +342,8 @@ program
             args,
             projectPath,
             verbose: options.verbose,
+            logLevel: level,
+            trace: options.trace || ''
         };
         client.write(JSON.stringify(request));
     });
@@ -161,14 +357,24 @@ program
             if (chunk) {
                 try {
                     const response = JSON.parse(chunk);
-                    if (response.type === 'log' && options.verbose) {
+                    if (response.type === 'log' && options.verbose && !options.json) {
                         console.log(response.data);
                     }
                     else if (response.type === 'result') {
-                        console.log(JSON.stringify(response.data, null, 2));
+                        if (options.json) {
+                            (0, errors_1.printJsonAndExit)({ ok: true, data: response.data });
+                        }
+                        else {
+                            (0, errors_1.printTextAndExit)(JSON.stringify(response.data, null, 2));
+                        }
                     }
                     else if (response.type === 'error') {
-                        console.error('Error:', response.message);
+                        if (options.json) {
+                            (0, errors_1.printJsonAndExit)({ ok: false, error: response.message, code: response.code || 'DAEMON_UNAVAILABLE' }, 'DAEMON_UNAVAILABLE');
+                        }
+                        else {
+                            (0, errors_1.printTextAndExit)(`Error: ${response.message}`, true, 'DAEMON_UNAVAILABLE');
+                        }
                     }
                 }
                 catch (e) {
@@ -179,9 +385,19 @@ program
         }
     });
     client.on('error', (err) => {
-        console.error('Failed to connect to daemon. Is it running?');
-        (0, logger_1.log)('Connection error:', err.message);
-        process.exit(1);
+        const msg = 'Failed to connect to daemon. Is it running?';
+        if (options.json) {
+            (0, errors_1.printJsonAndExit)({ ok: false, error: msg, code: 'DAEMON_UNAVAILABLE' }, 'DAEMON_UNAVAILABLE');
+        }
+        else {
+            (0, errors_1.printTextAndExit)(msg, true, 'DAEMON_UNAVAILABLE');
+        }
+        (0, logger_1.log)('warn', 'Connection error', { message: err.message });
     });
 });
-program.parse(process.argv);
+const parsed = program.parse(process.argv);
+const globalOpts = parsed.opts();
+if (globalOpts.logLevel)
+    (0, logger_1.setLogLevel)(String(globalOpts.logLevel));
+if (globalOpts.trace)
+    (0, logger_1.setTraceFlags)(String(globalOpts.trace).split(',').map((s) => s.trim()).filter(Boolean));

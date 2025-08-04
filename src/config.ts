@@ -20,11 +20,24 @@ export class ConfigManager {
     this.config = this.loadConfig();
   }
 
+  private validateConfigShape(obj: unknown): asserts obj is ProjectConfig {
+    if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+      throw new Error('Invalid config: expected object mapping alias to path');
+    }
+    for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+      if (typeof k !== 'string' || typeof v !== 'string') {
+        throw new Error('Invalid config: aliases must map to string paths');
+      }
+    }
+  }
+
   private loadConfig(): ProjectConfig {
     try {
       if (fs.existsSync(this.configPath)) {
         const data = fs.readFileSync(this.configPath, 'utf-8');
-        return JSON.parse(data);
+        const parsed = JSON.parse(data);
+        this.validateConfigShape(parsed);
+        return parsed;
       }
     } catch (error) {
       console.error('Error loading config:', error);
@@ -46,6 +59,7 @@ export class ConfigManager {
       throw new Error(`Path does not exist: ${absolutePath}`);
     }
     this.config[alias] = absolutePath;
+    this.validateConfigShape(this.config);
     this.saveConfig();
   }
 

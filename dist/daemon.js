@@ -41,34 +41,60 @@ const logger_1 = require("./logger");
 const config_1 = require("./config");
 const path_utils_1 = require("./path-utils");
 const SOCKET_PATH = '/tmp/lsp-top.sock';
+const PID_FILE = '/tmp/lsp-top.pid';
 class Daemon {
     constructor() {
         this.lspInstances = new Map();
-        this.config = new config_1.ConfigManager();
+        this.config = new config_1.ConfigManager(); // reserved for future use
         this.server = net.createServer(this.handleConnection.bind(this));
     }
     start() {
         (0, logger_1.clearLogFile)();
+        if (fs.existsSync(PID_FILE)) {
+            try {
+                const pid = parseInt(fs.readFileSync(PID_FILE, 'utf-8'), 10);
+                if (!isNaN(pid)) {
+                    try {
+                        process.kill(pid, 0);
+                        process.exit(0);
+                    }
+                    catch { }
+                }
+                fs.unlinkSync(PID_FILE);
+            }
+            catch { }
+        }
         if (fs.existsSync(SOCKET_PATH)) {
-            fs.unlinkSync(SOCKET_PATH);
+            try {
+                fs.unlinkSync(SOCKET_PATH);
+            }
+            catch { }
         }
         this.server.listen(SOCKET_PATH, () => {
-            (0, logger_1.log)(`Daemon listening on ${SOCKET_PATH}`);
+            fs.writeFileSync(PID_FILE, String(process.pid));
+            (0, logger_1.log)('info', 'Daemon listening', { socket: SOCKET_PATH });
         });
         process.on('SIGINT', () => this.stop());
         process.on('SIGTERM', () => this.stop());
     }
     async stop() {
-        (0, logger_1.log)('Stopping daemon...');
+        (0, logger_1.log)('info', 'Stopping daemon');
         for (const lsp of this.lspInstances.values()) {
             await lsp.stop();
         }
         this.lspInstances.clear();
         this.server.close(() => {
-            if (fs.existsSync(SOCKET_PATH)) {
-                fs.unlinkSync(SOCKET_PATH);
+            try {
+                if (fs.existsSync(SOCKET_PATH))
+                    fs.unlinkSync(SOCKET_PATH);
             }
-            (0, logger_1.log)('Daemon stopped.');
+            catch { }
+            try {
+                if (fs.existsSync(PID_FILE))
+                    fs.unlinkSync(PID_FILE);
+            }
+            catch { }
+            (0, logger_1.log)('info', 'Daemon stopped');
             process.exit(0);
         });
     }
@@ -77,14 +103,21 @@ class Daemon {
         socket.on('data', async (data) => {
             try {
                 const request = JSON.parse(data.toString());
-                // Handle stop command
+                if (typeof request.logLevel === 'string')
+                    (0, logger_1.setLogLevel)(request.logLevel);
+                if (typeof request.trace === 'string' && request.trace)
+                    (0, logger_1.setTraceFlags)(String(request.trace).split(',').map((s) => s.trim()).filter(Boolean));
                 if (request.action === 'stop') {
                     socket.write('OK\n');
                     socket.end();
                     await this.stop();
                     return;
                 }
-                // Handle normal LSP requests
+                if (request.action === 'status') {
+                    socket.write(JSON.stringify({ ok: true, sessions: this.lspInstances.size }) + '\n');
+                    socket.end();
+                    return;
+                }
                 const lspRequest = request;
                 if (lspRequest.verbose) {
                     logListener = (message) => {
@@ -92,12 +125,17 @@ class Daemon {
                     };
                     logger_1.loggerEmitter.on('log', logListener);
                 }
-                const result = await this.handleRequest(lspRequest);
-                socket.write(JSON.stringify({ type: 'result', data: result }) + '\n');
+                if (lspRequest.action === 'status') {
+                    socket.write(JSON.stringify({ ok: true, sessions: this.lspInstances.size }) + '\n');
+                }
+                else {
+                    const result = await (0, logger_1.time)('daemon.handleRequest', () => this.handleRequest(lspRequest));
+                    socket.write(JSON.stringify({ type: 'result', data: result }) + '\n');
+                }
             }
             catch (error) {
                 const message = error instanceof Error ? error.message : String(error);
-                (0, logger_1.log)(`Error handling request: ${message}`);
+                (0, logger_1.log)('error', 'Error handling request', { message });
                 socket.write(JSON.stringify({ type: 'error', message }) + '\n');
             }
             finally {
@@ -110,19 +148,19 @@ class Daemon {
             }
         });
         socket.on('error', (err) => {
-            (0, logger_1.log)('Socket error:', err);
+            (0, logger_1.log)('warn', 'Socket error', { error: String(err) });
         });
     }
     async handleRequest(request) {
         const { alias, action, args, projectPath } = request;
         let lsp = this.lspInstances.get(alias);
         if (!lsp) {
-            (0, logger_1.log)(`Creating new LSP instance for alias '${alias}' at ${projectPath}`);
+            (0, logger_1.log)('info', 'Creating LSP instance', { alias, projectPath });
             lsp = new typescript_1.TypeScriptLSP(projectPath);
             await lsp.start();
             this.lspInstances.set(alias, lsp);
         }
-        (0, logger_1.log)(`Handling action '${action}' for alias '${alias}'`);
+        (0, logger_1.log)('debug', 'Handling action', { action, alias });
         switch (action) {
             case 'diagnostics': {
                 if (!args[0]) {
@@ -150,9 +188,16 @@ class Daemon {
     }
 }
 exports.Daemon = Daemon;
-// This allows the daemon to be started directly
 if (process.argv[1].endsWith('daemon.js')) {
-    (0, logger_1.setVerbose)(process.argv.includes('--verbose'));
+    const idxVerbose = process.argv.indexOf('--verbose');
+    const idxLevel = process.argv.indexOf('--log-level');
+    const idxTrace = process.argv.indexOf('--trace');
+    if (idxLevel !== -1 && process.argv[idxLevel + 1])
+        (0, logger_1.setLogLevel)(process.argv[idxLevel + 1]);
+    else
+        (0, logger_1.setLogLevel)(idxVerbose !== -1 ? 'debug' : 'info');
+    if (idxTrace !== -1 && process.argv[idxTrace + 1])
+        (0, logger_1.setTraceFlags)(process.argv[idxTrace + 1].split(',').map((s) => s.trim()).filter(Boolean));
     const daemon = new Daemon();
     daemon.start();
 }

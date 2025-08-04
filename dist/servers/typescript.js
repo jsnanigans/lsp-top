@@ -43,7 +43,7 @@ class TypeScriptLSP {
         this.workspaceRoot = workspaceRoot;
         this.openDocuments = new Set();
         const vtsls = this.findVtsls();
-        (0, logger_1.log)(`Using vtsls at: ${vtsls}`);
+        (0, logger_1.log)('info', 'Using vtsls', { path: vtsls });
         this.client = new lsp_client_1.LSPClient(vtsls, ['--stdio'], workspaceRoot);
     }
     findVtsls() {
@@ -53,7 +53,7 @@ class TypeScriptLSP {
             'vtsls' // Try global/PATH installation
         ];
         for (const vtsPath of possiblePaths) {
-            (0, logger_1.log)(`Checking for vtsls at: ${vtsPath}`);
+            (0, logger_1.log)('debug', 'Checking for vtsls', { path: vtsPath });
             if (vtsPath === 'vtsls' || fs.existsSync(vtsPath)) {
                 return vtsPath;
             }
@@ -61,8 +61,10 @@ class TypeScriptLSP {
         throw new Error('vtsls language server not found. Make sure @vtsls/language-server is installed.');
     }
     async start() {
-        await this.client.start();
-        await this.client.initialize();
+        await (0, logger_1.time)('typescript.start', async () => {
+            await this.client.start();
+            await this.client.initialize();
+        });
     }
     async stop() {
         await this.client.shutdown();
@@ -72,7 +74,7 @@ class TypeScriptLSP {
         const content = fs.readFileSync(filePath, 'utf-8');
         if (this.openDocuments.has(uri)) {
             // Document is already open, send a change notification to trigger re-analysis
-            (0, logger_1.log)(`Document ${uri} is already open, sending change notification.`);
+            (0, logger_1.log)('trace', 'Document change', { uri });
             this.client.sendMessage({
                 jsonrpc: '2.0',
                 method: 'textDocument/didChange',
@@ -89,7 +91,7 @@ class TypeScriptLSP {
         }
         else {
             // First time opening this document
-            (0, logger_1.log)(`Opening document ${uri}...`);
+            (0, logger_1.log)('trace', 'Opening document', { uri });
             this.client.sendMessage({
                 jsonrpc: '2.0',
                 method: 'textDocument/didOpen',
@@ -104,10 +106,8 @@ class TypeScriptLSP {
             });
             this.openDocuments.add(uri);
         }
-        // Give the server more time to process and push diagnostics
         await new Promise(resolve => setTimeout(resolve, 1000));
-        // Return the diagnostics from the client's cache
-        return this.client.getDiagnostics(uri);
+        return await (0, logger_1.time)('typescript.diagnostics', async () => this.client.getDiagnostics(uri));
     }
     async getDefinition(filePath, line, character) {
         const uri = `file://${filePath}`;
@@ -129,7 +129,7 @@ class TypeScriptLSP {
             // Give the server a moment to process
             await new Promise(resolve => setTimeout(resolve, 500));
         }
-        return this.client.getDefinition(uri, line - 1, character - 1);
+        return await (0, logger_1.time)('typescript.definition', async () => this.client.getDefinition(uri, line - 1, character - 1));
     }
 }
 exports.TypeScriptLSP = TypeScriptLSP;

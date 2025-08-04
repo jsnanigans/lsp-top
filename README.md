@@ -1,128 +1,158 @@
 # LSP-Top
 
-A CLI wrapper around LSP servers that allows you to run language server actions from anywhere in your terminal.
+A fast CLI for running Language Server actions from anywhere. It manages a lightweight daemon and per-project aliases so you can query LSP features (Diagnostics, Go to Definition, more soon) without switching directories.
 
-## Features
+## Highlights
 
-- **Project Aliases**: Register project directories with simple aliases
-- **Path Resolution**: Use relative paths that are automatically resolved to your project root
-- **LSP Integration**: Currently supports TypeScript via vtsls
-- **Stateless**: No background daemons - LSP servers start on-demand per command
+- Project aliases: `web -> ~/code/webapp`
+- Smart path resolution relative to project root
+- LSP-backed actions (TypeScript via @vtsls/language-server)
+- Daemonized for speed: background server multiplexes requests
+- JSON output mode for scripting
 
 ## Installation
 
 ```bash
-# Install dependencies
 pnpm install
-
-# Build the project
 pnpm run build
-
-# Optionally install globally
 npm link
+```
+
+Requirements: Node.js 18+. For TypeScript projects install @vtsls/language-server in the project you target:
+```bash
+pnpm add -D @vtsls/language-server
 ```
 
 ## Quick Start
 
 ```bash
-# Register a project with an alias
-lsp-top init myproject /path/to/project
+# 1) Alias a project
+lsp-top init web ~/projects/webapp
 
-# Run diagnostics on a file (from anywhere)
-lsp-top run myproject diagnostics src/index.ts
+# 2) Start the daemon (recommended)
+lsp-top start-server
 
-# Go to definition at a specific position
-lsp-top run myproject definition src/index.ts:10:5
+# 3) Run actions from anywhere
+lsp-top run web diagnostics src/index.ts
+lsp-top run web definition src/index.ts:10:5
 ```
 
-## Commands
+## CLI Usage
 
-### Project Management
+Global options:
+- -v, --verbose
+- -q, --quiet
+- --json
+- --log-level <error|warn|info|debug|trace>
+- --trace <flags>
 
+### Project management
+
+Init a project alias
 ```bash
-# Initialize a project with an alias
 lsp-top init <alias> [path]
+```
+- alias: name for the project
+- path: absolute or relative; defaults to current directory
 
-# List all configured projects
+List aliases
+```bash
 lsp-top list
+```
 
-# Remove a project alias
+Remove an alias
+```bash
 lsp-top remove <alias>
 ```
 
-### LSP Actions
-
+Configure and inspect
 ```bash
-# Run an LSP action for a project
-lsp-top run <alias> <action> [args...]
+lsp-top configure --set-alias <alias:path>
+lsp-top configure --print [--env NODE_ENV,HOME] [--json]
 ```
 
-#### Available Actions
+### Daemon control and status
 
-- **`diagnostics <file>`**: Get TypeScript diagnostics for a file
-- **`definition <file:line:col>`**: Go to definition at a specific position
+Start daemon
+```bash
+lsp-top start-server [--verbose] [--log-level <level>] [--trace <flags>]
+```
+
+Show daemon metrics/status
+```bash
+lsp-top metrics [--json]
+```
+
+Follow daemon logs
+```bash
+lsp-top logs [--tail <n>] [--follow]
+```
+
+Stop daemon
+```bash
+lsp-top stop-server
+```
+
+### LSP actions
+
+Run an action
+```bash
+lsp-top run <alias> <action> [args...] [--json] [-v|--log-level <lvl>] [--trace <flags>]
+```
+
+Actions (TypeScript via vtsls):
+- diagnostics <file>
+  - Returns TypeScript diagnostics for the file
+  - Example: `lsp-top run web diagnostics src/components/Button.tsx`
+- definition <file:line:column>
+  - Returns definition locations
+  - Example: `lsp-top run web definition src/utils.ts:45:12`
+
+Environment diagnosis
+```bash
+lsp-top diagnose [alias] [--json]
+```
+- Checks Node version, @vtsls/language-server availability, and an alias’s path
+
+## Output formats
+
+Text (default) prints human-friendly strings. JSON mode prints a single JSON object per invocation, suitable for scripting:
+```bash
+lsp-top run web diagnostics src/index.ts --json
+```
+
+## Path resolution
+
+File arguments are resolved relative to the aliased project root. Absolute paths are supported and used as-is.
+
+## Configuration files
+
+Aliases are stored in `~/.lsp-top/aliases.json`.
 
 ## Examples
 
 ```bash
-# Setup
-lsp-top init webapp ~/projects/webapp
 lsp-top init api ~/work/backend-api
-
-# Get diagnostics (from anywhere)
-lsp-top run webapp diagnostics components/Button.tsx
 lsp-top run api diagnostics src/controllers/user.ts
-
-# Go to definition
-lsp-top run webapp definition src/utils.ts:45:12
+lsp-top run api definition src/index.ts:12:3
 ```
-
-## Requirements
-
-- Node.js 18+
-- TypeScript projects require `@vtsls/language-server` to be installed:
-  ```bash
-  pnpm add -D @vtsls/language-server
-  ```
-
-## Configuration
-
-Project aliases are stored in `~/.lsp-top/aliases.json`.
-
-## Architecture
-
-- **Stateless**: Each command starts a fresh LSP server and exits
-- **Path Resolution**: File paths are automatically resolved relative to the project root
-- **LSP Protocol**: Uses proper LSP client-server communication with JSON-RPC over stdio
 
 ## Development
 
 ```bash
-# Run in development mode
-pnpm run dev -- <command>
-
-# Build
+pnpm run dev -- <cmd>
+pnpm run dev -- init test .
+pnpm run dev -- run test diagnostics src/cli.ts
 pnpm run build
-
-# Example development usage
-pnpm run dev init test .
-pnpm run dev run test diagnostics src/cli.ts
 ```
-
-## Extending
-
-The architecture supports adding:
-- More LSP servers (Python, Go, etc.)
-- Composite actions that chain multiple LSP calls
-- Custom project-specific configurations
 
 ## Roadmap
 
-- [ ] Support for more language servers
-- [ ] Composite actions (analyze_symbol, improve_code)
-- [ ] Configuration file support
-- [ ] Better error handling and user feedback
-- [ ] Shell completion
+- More language servers (pyright, gopls, rust-analyzer)
+- Composite actions (symbol analysis, refactors)
+- Config file support
+- Richer errors and UX
+- Shell completion
 
 ## License
 

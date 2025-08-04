@@ -15,8 +15,8 @@ class LSPClient {
     }
     async start() {
         return new Promise((resolve, reject) => {
-            (0, logger_1.log)(`Starting LSP: ${this.command} ${this.args.join(' ')}`);
-            (0, logger_1.log)(`Working directory: ${this.workspaceRoot}`);
+            (0, logger_1.log)('info', 'Starting LSP', { cmd: this.command, args: this.args, cwd: this.workspaceRoot });
+            (0, logger_1.log)('debug', 'Working directory', { cwd: this.workspaceRoot });
             this.process = (0, child_process_1.spawn)(this.command, this.args, {
                 cwd: this.workspaceRoot,
                 stdio: ['pipe', 'pipe', 'pipe'],
@@ -66,26 +66,26 @@ class LSPClient {
                 }
             });
             this.process.stderr?.on('data', (data) => {
-                console.error('LSP stderr:', data.toString());
+                (0, logger_1.log)('warn', 'LSP stderr', { data: String(data) });
             });
             this.process.on('error', (error) => {
-                console.error('LSP process error:', error);
+                (0, logger_1.log)('error', 'LSP process error', { error: String(error) });
                 reject(error);
             });
             this.process.on('exit', (code) => {
                 // Only log if unexpected exit
                 if (code !== 0 && code !== null) {
-                    console.error(`LSP server exited with code ${code}`);
+                    (0, logger_1.log)('warn', 'LSP server exited', { code });
                 }
             });
             setTimeout(() => {
-                (0, logger_1.log)('LSP server started');
+                (0, logger_1.log)('info', 'LSP server started');
                 resolve();
             }, 100);
         });
     }
     handleMessage(message) {
-        (0, logger_1.log)('[LSP] Received message:', JSON.stringify(message, null, 2).slice(0, 200) + '...');
+        (0, logger_1.log)('trace', 'LSP received', { preview: JSON.stringify(message).slice(0, 200) + '...' });
         if (message.id !== undefined && this.responseHandlers.has(message.id)) {
             const handler = this.responseHandlers.get(message.id);
             this.responseHandlers.delete(message.id);
@@ -95,14 +95,14 @@ class LSPClient {
             if (message.method === 'textDocument/publishDiagnostics') {
                 const uri = message.params?.uri;
                 const diagnostics = message.params?.diagnostics || [];
-                (0, logger_1.log)('[LSP] Diagnostics received for', uri, ':', diagnostics.length, 'items');
+                (0, logger_1.log)('debug', 'Diagnostics received', { uri, count: diagnostics.length });
                 if (uri) {
                     this.diagnostics.set(uri, diagnostics);
                 }
             }
             else if (message.method === 'workspace/configuration') {
                 // Handle workspace configuration request from server
-                (0, logger_1.log)('[LSP] Server requesting workspace configuration');
+                (0, logger_1.log)('debug', 'Server requesting workspace configuration');
                 const response = {
                     jsonrpc: '2.0',
                     id: message.id,
@@ -111,7 +111,7 @@ class LSPClient {
                 this.sendMessage(response);
             }
             else if (message.method !== 'window/logMessage') {
-                (0, logger_1.log)('Unhandled notification:', message.method);
+                (0, logger_1.log)('debug', 'Unhandled notification', { method: message.method });
             }
         }
     }
@@ -147,7 +147,7 @@ class LSPClient {
         if (!this.process?.stdin) {
             throw new Error('LSP process not started');
         }
-        (0, logger_1.log)('[LSP] Sending message:', JSON.stringify(message, null, 2));
+        (0, logger_1.log)('trace', 'LSP sending', { message });
         const content = JSON.stringify(message);
         const header = `Content-Length: ${Buffer.byteLength(content)}\r\n\r\n`;
         this.process.stdin.write(header + content);
@@ -228,7 +228,7 @@ class LSPClient {
             return result;
         }
         catch (error) {
-            (0, logger_1.log)('[LSP] Pull-based diagnostics failed, returning push-based diagnostics');
+            (0, logger_1.log)('info', 'Pull-based diagnostics failed, falling back to push-based');
             // Fall back to push-based diagnostics
             return { diagnostics: this.getDiagnosticsForUri(uri) };
         }

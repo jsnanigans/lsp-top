@@ -42,11 +42,23 @@ class ConfigManager {
         this.configPath = path.join(os.homedir(), '.lsp-top', 'aliases.json');
         this.config = this.loadConfig();
     }
+    validateConfigShape(obj) {
+        if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
+            throw new Error('Invalid config: expected object mapping alias to path');
+        }
+        for (const [k, v] of Object.entries(obj)) {
+            if (typeof k !== 'string' || typeof v !== 'string') {
+                throw new Error('Invalid config: aliases must map to string paths');
+            }
+        }
+    }
     loadConfig() {
         try {
             if (fs.existsSync(this.configPath)) {
                 const data = fs.readFileSync(this.configPath, 'utf-8');
-                return JSON.parse(data);
+                const parsed = JSON.parse(data);
+                this.validateConfigShape(parsed);
+                return parsed;
             }
         }
         catch (error) {
@@ -67,6 +79,7 @@ class ConfigManager {
             throw new Error(`Path does not exist: ${absolutePath}`);
         }
         this.config[alias] = absolutePath;
+        this.validateConfigShape(this.config);
         this.saveConfig();
     }
     getPath(alias) {
@@ -82,6 +95,12 @@ class ConfigManager {
     }
     listAliases() {
         return { ...this.config };
+    }
+    effectiveConfig(envKeys = []) {
+        const env = {};
+        for (const key of envKeys)
+            env[key] = process.env[key];
+        return { aliases: this.listAliases(), env };
     }
 }
 exports.ConfigManager = ConfigManager;

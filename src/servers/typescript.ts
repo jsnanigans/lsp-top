@@ -1,7 +1,7 @@
 import { LSPClient } from '../lsp-client';
 import * as path from 'path';
 import * as fs from 'fs';
-import { log } from '../logger';
+import { log, time, metrics } from '../logger';
 
 export class TypeScriptLSP {
   private client: LSPClient;
@@ -9,7 +9,7 @@ export class TypeScriptLSP {
 
   constructor(private workspaceRoot: string) {
     const vtsls = this.findVtsls();
-    log(`Using vtsls at: ${vtsls}`);
+    log('info', 'Using vtsls', { path: vtsls });
     this.client = new LSPClient(
       vtsls,
       ['--stdio'],
@@ -25,7 +25,7 @@ export class TypeScriptLSP {
     ];
 
     for (const vtsPath of possiblePaths) {
-      log(`Checking for vtsls at: ${vtsPath}`);
+      log('debug', 'Checking for vtsls', { path: vtsPath });
       if (vtsPath === 'vtsls' || fs.existsSync(vtsPath)) {
         return vtsPath;
       }
@@ -35,8 +35,10 @@ export class TypeScriptLSP {
   }
 
   async start(): Promise<void> {
-    await this.client.start();
-    await this.client.initialize();
+    await time('typescript.start', async () => {
+      await this.client.start();
+      await this.client.initialize();
+    });
   }
 
   async stop(): Promise<void> {
@@ -49,7 +51,7 @@ export class TypeScriptLSP {
     
     if (this.openDocuments.has(uri)) {
       // Document is already open, send a change notification to trigger re-analysis
-      log(`Document ${uri} is already open, sending change notification.`);
+      log('trace', 'Document change', { uri });
       this.client.sendMessage({
         jsonrpc: '2.0',
         method: 'textDocument/didChange',
@@ -65,7 +67,7 @@ export class TypeScriptLSP {
       });
     } else {
       // First time opening this document
-      log(`Opening document ${uri}...`);
+      log('trace', 'Opening document', { uri });
       this.client.sendMessage({
         jsonrpc: '2.0',
         method: 'textDocument/didOpen',
@@ -81,11 +83,8 @@ export class TypeScriptLSP {
       this.openDocuments.add(uri);
     }
 
-    // Give the server more time to process and push diagnostics
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Return the diagnostics from the client's cache
-    return this.client.getDiagnostics(uri);
+    return await time('typescript.diagnostics', async () => this.client.getDiagnostics(uri));
   }
 
   async getDefinition(filePath: string, line: number, character: number): Promise<any> {
@@ -110,6 +109,6 @@ export class TypeScriptLSP {
       await new Promise(resolve => setTimeout(resolve, 500));
     }
 
-    return this.client.getDefinition(uri, line - 1, character - 1);
+    return await time('typescript.definition', async () => this.client.getDefinition(uri, line - 1, character - 1));
   }
 }
