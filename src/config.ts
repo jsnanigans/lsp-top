@@ -6,6 +6,11 @@ export interface ProjectConfig {
   [alias: string]: string;
 }
 
+export interface EffectiveConfig {
+  aliases: ProjectConfig;
+  env: Record<string, string | undefined>;
+}
+
 export class ConfigManager {
   private configPath: string;
   private config: ProjectConfig;
@@ -59,5 +64,11 @@ export class ConfigManager {
 
   listAliases(): ProjectConfig {
     return { ...this.config };
+  }
+
+  effectiveConfig(envKeys: string[] = []): EffectiveConfig {
+    const env: Record<string, string | undefined> = {};
+    for (const key of envKeys) env[key] = process.env[key];
+    return { aliases: this.listAliases(), env };
   }
 }

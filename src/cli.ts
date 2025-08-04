@@ -17,12 +17,13 @@ const config = new ConfigManager();
 program
   .name('lsp-top')
   .description('LSP server wrapper for running language server commands from anywhere')
-  .version('0.1.0');
+  .version(require('../package.json').version);
 
 program
   .command('start-server')
   .description('Start the LSP daemon')
   .option('-v, --verbose', 'Enable verbose logging')
+  .option('-q, --quiet', 'Suppress non-error output')
   .action((options) => {
     const args = options.verbose ? ['--verbose'] : [];
     const daemon = spawn(process.argv[0], [path.resolve(__dirname, 'daemon.js'), ...args], {
@@ -31,6 +32,43 @@ program
     });
     daemon.unref();
     console.log('LSP daemon started.');
+  });
+
+program
+  .command('status')
+  .description('Show daemon status')
+  .option('--json', 'Output machine-readable JSON only')
+  .action(() => {
+    const client = net.connect(SOCKET_PATH, () => {
+      client.write(JSON.stringify({ action: 'status' }));
+    });
+    client.on('data', (data) => {
+      try {
+        const info = JSON.parse(data.toString());
+        if (info && info.ok) {
+          if (program.opts().json) {
+            console.log(JSON.stringify(info));
+          } else {
+            console.log(`Daemon: running, sessions=${info.sessions}`);
+          }
+          process.exit(0);
+        } else {
+          const msg = (info && info.error) || 'Unknown error';
+          if (program.opts().json) console.log(JSON.stringify({ ok: false, error: msg, code: 'STATUS_ERROR' }));
+          else console.error('Error:', msg);
+          process.exit(4);
+        }
+      } catch {
+        console.log(data.toString());
+        process.exit(0);
+      }
+    });
+    client.on('error', () => {
+      const msg = 'Daemon not running';
+      if (program.opts().json) console.log(JSON.stringify({ ok: false, error: msg, code: 'DAEMON_NOT_RUNNING' }));
+      else console.error(msg);
+      process.exit(5);
+    });
   });
 
 program
@@ -78,6 +116,42 @@ program
   });
 
 program
+  .command('configure')
+  .description('Show or set configuration')
+  .option('--set-alias <alias:path>', 'Set alias mapping, e.g., web:/path')
+  .option('--print', 'Print effective config')
+  .option('--env <keys>', 'Comma-separated env keys to include in effective config')
+  .option('--json', 'Output machine-readable JSON only')
+  .action((options) => {
+    if (options.setAlias) {
+      const [alias, p] = String(options.setAlias).split(':');
+      if (!alias || !p) {
+        console.error('Error: --set-alias requires format alias:path');
+        process.exit(6);
+      }
+      try {
+        config.addAlias(alias, p);
+        if (!options.json) console.log(`✓ Set ${alias} -> ${p}`);
+        else console.log(JSON.stringify({ ok: true }));
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        if (options.json) console.log(JSON.stringify({ ok: false, error: msg, code: 'CONFIG_SET_ERROR' }));
+        else console.error('Error:', msg);
+        process.exit(7);
+      }
+      return;
+    }
+
+    const keys = options.env ? String(options.env).split(',').map((s) => s.trim()) : [];
+    const eff = config.effectiveConfig(keys);
+    if (options.json || options.print) {
+      console.log(JSON.stringify(eff, null, options.json ? 0 : 2));
+    } else {
+      console.log('Use --print to display effective config');
+    }
+  });
+
+program
   .command('list')
   .description('List all project aliases')
   .action(() => {
@@ -108,17 +182,46 @@ program
   });
 
 program
+  .command('diagnose [alias]')
+  .description('Diagnose environment and server readiness')
+  .option('--json', 'Output machine-readable JSON only')
+  .action(async (alias?: string, options?: any) => {
+    const checks: any = { ok: true, node: process.version, hasTypescriptServer: false, alias, projectPath: undefined };
+    try {
+      const pkg = require.resolve('@vtsls/language-server/package.json');
+      checks.hasTypescriptServer = !!pkg;
+    } catch {
+      checks.hasTypescriptServer = false;
+      checks.ok = false;
+    }
+    if (alias) {
+      const p = config.getPath(alias);
+      checks.projectPath = p;
+      if (!p) checks.ok = false;
+    }
+    if (options?.json) console.log(JSON.stringify(checks));
+    else console.log(JSON.stringify(checks, null, 2));
+    process.exit(checks.ok ? 0 : 8);
+  });
+
+program
   .command('run <alias> <action> [args...]')
   .description('Run an LSP action for a project')
   .option('-v, --verbose', 'Enable verbose logging')
+  .option('-q, --quiet', 'Suppress non-error output')
+  .option('--json', 'Output machine-readable JSON only')
   .action(async (alias: string, action: string, args: string[], options) => {
     setVerbose(options.verbose);
     const projectPath = config.getPath(alias);
     if (!projectPath) {
-      console.error(`Error: Project '${alias}' not found. Use 'lsp-top list' to see available projects.`);
-      process.exit(1);
+      const msg = `Project '${alias}' not found. Use 'lsp-top list' to see available projects.`;
+      if (options.json) {
+        console.log(JSON.stringify({ ok: false, error: msg, code: 'ALIAS_NOT_FOUND' }));
+      } else {
+        console.error(`Error: ${msg}`);
+      }
+      process.exit(2);
     }
-
     const client = net.connect(SOCKET_PATH, () => {
       const request = {
         alias,
@@ -140,14 +243,21 @@ program
             if (chunk) {
                 try {
                     const response = JSON.parse(chunk);
-                    if (response.type === 'log' && options.verbose) {
+                    if (response.type === 'log' && options.verbose && !options.json) {
                         console.log(response.data);
                     } else if (response.type === 'result') {
-                        console.log(JSON.stringify(response.data, null, 2));
+                        if (options.json) {
+                            console.log(JSON.stringify({ ok: true, data: response.data }));
+                        } else {
+                            console.log(JSON.stringify(response.data, null, 2));
+                        }
                     } else if (response.type === 'error') {
-                        console.error('Error:', response.message);
-                    }
-                } catch (e) {
+                        if (options.json) {
+                            console.log(JSON.stringify({ ok: false, error: response.message, code: response.code || 'DAEMON_ERROR' }));
+                        } else {
+                            console.error('Error:', response.message);
+                        }
+                    }                } catch (e) {
                     console.error('Error parsing daemon response:', e, 'Chunk:', chunk);
                 }
             }
@@ -156,9 +266,14 @@ program
     });
 
     client.on('error', (err) => {
-      console.error('Failed to connect to daemon. Is it running?');
+      const msg = 'Failed to connect to daemon. Is it running?';
+      if (options.json) {
+        console.log(JSON.stringify({ ok: false, error: msg, code: 'DAEMON_UNAVAILABLE' }));
+      } else {
+        console.error(msg);
+      }
       log('Connection error:', err.message);
-      process.exit(1);
+      process.exit(3);
     });
   });
 

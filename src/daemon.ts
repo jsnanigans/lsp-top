@@ -69,7 +69,11 @@ class Daemon {
           await this.stop();
           return;
         }
-
+        if (request.action === 'status') {
+          socket.write(JSON.stringify({ ok: true, sessions: this.lspInstances.size }) + '\n');
+          socket.end();
+          return;
+        }
         // Handle normal LSP requests
         const lspRequest = request as LSPRequest;
         if (lspRequest.verbose) {
@@ -79,9 +83,12 @@ class Daemon {
             loggerEmitter.on('log', logListener);
         }
 
-        const result = await this.handleRequest(lspRequest);
-        socket.write(JSON.stringify({ type: 'result', data: result }) + '\n');
-      } catch (error) {
+        if (lspRequest.action === 'status') {
+          socket.write(JSON.stringify({ ok: true, sessions: this.lspInstances.size }) + '\n');
+        } else {
+          const result = await this.handleRequest(lspRequest);
+          socket.write(JSON.stringify({ type: 'result', data: result }) + '\n');
+        }      } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         log(`Error handling request: ${message}`);
         socket.write(JSON.stringify({ type: 'error', message }) + '\n');
