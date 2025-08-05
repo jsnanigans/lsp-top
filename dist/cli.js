@@ -434,6 +434,8 @@ program
     .description("Plan or apply WorkspaceEdit JSON")
     .option("--json", "Output machine-readable JSON only")
     .option("--write", "Apply edits to disk")
+    .option("--log-level <level>", "Set log level (error|warn|info|debug|trace)")
+    .option("--trace <flags>", "Comma-separated trace flags")
     .action(async (alias, mode, input, options) => {
     const level = (options.logLevel
         ? String(options.logLevel)

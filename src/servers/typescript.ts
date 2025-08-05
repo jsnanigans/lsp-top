@@ -1,7 +1,7 @@
 import { LSPClient } from "../lsp-client";
 import * as path from "path";
 import * as fs from "fs";
-import { log, time, metrics } from "../logger";
+import { log, time } from "../logger";
 
 type WorkspaceTextEdit = { range: { start: { line: number; character: number }; end: { line: number; character: number } }; newText: string };
 
@@ -246,9 +246,6 @@ export class TypeScriptLSP {
   }
 
   private async applyWorkspaceEdit(edit: WorkspaceEdit) {
-    documentChanges?: any[];
-    changes?: Record<string, any[]>;
-  }) {
     if (edit.documentChanges && Array.isArray(edit.documentChanges)) {
       for (const dc of edit.documentChanges) {
         if (dc.textDocument && dc.edits) {
