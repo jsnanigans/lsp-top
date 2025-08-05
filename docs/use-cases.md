@@ -108,7 +108,7 @@ def analyze_project():
         capture_output=True,
         text=True
     ).stdout.strip().split('\n')
-    
+
     issues = []
     for file in files:
         # Check each file
@@ -123,7 +123,7 @@ def analyze_project():
                 "file": file,
                 "issues": data["diagnostics"]
             })
-    
+
     return issues
 ```
 
@@ -135,13 +135,13 @@ def analyze_project():
 def understand_function(file_pos):
     # Get function info
     hover = run_lsp_top(f"explore hover {file_pos} --json")
-    
+
     # Find all usages
     refs = run_lsp_top(f"navigate refs {file_pos} --json")
-    
+
     # Get implementation details
     impl = run_lsp_top(f"navigate impl {file_pos} --json")
-    
+
     return {
         "documentation": hover["data"]["contents"],
         "references": refs["data"]["locations"],
@@ -159,10 +159,10 @@ def safe_rename(old_pos, new_name):
     preview = run_lsp_top(
         f"refactor rename {old_pos} {new_name} --preview --json"
     )
-    
+
     # Analyze impact
     affected_files = len(preview["data"]["documentChanges"])
-    
+
     if affected_files < 10:  # Safe threshold
         # Apply rename
         result = run_lsp_top(
@@ -183,16 +183,16 @@ def generate_implementation(interface_file):
     symbols = run_lsp_top(
         f"explore symbols {interface_file} --kind interface --json"
     )
-    
+
     for symbol in symbols["data"]:
         # Get interface details
         hover = run_lsp_top(
             f"explore hover {interface_file}:{symbol['line']}:{symbol['col']} --json"
         )
-        
+
         # Generate implementation based on interface
         implementation = generate_from_interface(hover["data"])
-        
+
         # Verify generated code
         verify_result = verify_implementation(implementation)
 ```
@@ -206,15 +206,15 @@ def monitor_code_quality():
     while True:
         # Check changed files
         changed = run_lsp_top("analyze changed --json")
-        
+
         for file in changed["data"]["files"]:
             # Analyze complexity
             complexity = run_lsp_top(f"analyze complexity {file} --json")
-            
+
             if complexity["data"]["cyclomatic"] > 10:
                 # Suggest refactoring
                 suggest_refactor(file, complexity)
-            
+
             # Check for unused code
             unused = run_lsp_top(f"analyze unused --file {file} --json")
             if unused["data"]["items"]:
@@ -254,7 +254,7 @@ done
 - name: Code Quality Check
   run: |
     lsp-top analyze changed --since ${{ github.base_ref }} --json > analysis.json
-    
+
     ERROR_COUNT=$(jq '.data.errorCount' analysis.json)
     if [ $ERROR_COUNT -gt 0 ]; then
       echo "::error::Found $ERROR_COUNT errors"
@@ -306,6 +306,7 @@ function goto() {
 ## Benefits
 
 ### For Humans
+
 1. **No IDE Required**: Full code intelligence from terminal
 2. **Remote Development**: Works over SSH
 3. **Scriptable**: Automate repetitive tasks
@@ -313,6 +314,7 @@ function goto() {
 5. **Composable**: Integrates with Unix tools
 
 ### For AI Agents
+
 1. **Structured Data**: JSON output for easy parsing
 2. **Deterministic**: Predictable command patterns
 3. **Context-Rich**: Includes surrounding code
@@ -322,6 +324,7 @@ function goto() {
 ## Real-World Scenarios
 
 ### 1. Debugging Production Issue
+
 ```bash
 # SSH into production server
 ssh prod-server
@@ -340,6 +343,7 @@ git log -p src/api.ts | head -50
 ```
 
 ### 2. Large-Scale Refactoring
+
 ```bash
 # Find all uses of deprecated API
 lsp-top navigate refs src/deprecated.ts:oldAPI:10:5 > usage.txt
@@ -352,6 +356,7 @@ done
 ```
 
 ### 3. Code Review Automation
+
 ```bash
 # AI agent reviewing PR
 for file in $(git diff --name-only main...HEAD | grep '\.ts$'); do
@@ -360,10 +365,10 @@ for file in $(git diff --name-only main...HEAD | grep '\.ts$'); do
   if [ "$complexity" -gt 15 ]; then
     echo "::warning file=$file::High complexity: $complexity"
   fi
-  
+
   # Check for common issues
   lsp-top analyze file "$file" --json | \
-    jq -r '.data.diagnostics[] | 
+    jq -r '.data.diagnostics[] |
     "::warning file=\(.file),line=\(.range.start.line)::\(.message)"'
 done
 ```

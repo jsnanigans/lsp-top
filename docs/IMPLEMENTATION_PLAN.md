@@ -1,11 +1,13 @@
 # LSP-Top Implementation Plan v2
 
 ## Overview
+
 This plan outlines the transformation of LSP-Top from a basic LSP wrapper to a comprehensive command-line IDE. The implementation is structured in phases, with clear priorities and deliverables.
 
 ## Current State Assessment
 
 ### ✅ Completed Features
+
 - **Core Infrastructure**: Daemon, LSP client, CLI framework
 - **Schema Versioning**: CommandResult with schemaVersion "v1"
 - **Inspect Pipeline**: Full implementation with diagnostics, fixes, format, organize
@@ -14,7 +16,8 @@ This plan outlines the transformation of LSP-Top from a basic LSP wrapper to a c
 - **Basic Navigation**: Definition command only
 
 ### ❌ Critical Gaps
-- **Navigation**: Missing refs, type, impl, symbols commands
+
+- **Navigation**: Missing type, impl, symbols commands (refs ✅ completed)
 - **Code Understanding**: No hover, signature, outline functionality
 - **Refactoring**: No rename, extract, or code actions
 - **Search**: No text or symbol search
@@ -25,11 +28,13 @@ This plan outlines the transformation of LSP-Top from a basic LSP wrapper to a c
 ### Phase 1: Core Navigation Commands (Weeks 1-2) 🔴 CRITICAL
 
 #### Objectives
+
 Enable developers to navigate code from the command line with rich context.
 
 #### Deliverables
 
-##### 1.1 References Command
+##### 1.1 References Command ✅ COMPLETED
+
 ```typescript
 // daemon.ts - Add to handleRequest
 case "references": {
@@ -37,11 +42,11 @@ case "references": {
   const filePath = resolveProjectPath(projectPath, fileArg);
   const line = parseInt(lineStr, 10) - 1;
   const char = parseInt(charStr, 10) - 1;
-  
+
   const refs = await lsp.getReferences(filePath, line, char, {
     includeDeclaration: flags.includeDeclaration
   });
-  
+
   return formatReferences(refs, {
     context: flags.context || 2,
     groupByFile: flags.groupByFile
@@ -49,7 +54,17 @@ case "references": {
 }
 ```
 
+**Implementation Status:**
+
+- ✅ LSPClient.getReferences method implemented
+- ✅ TypeScriptLSP.getReferences method implemented
+- ✅ Daemon handler for references action implemented
+- ✅ CLI --include-declaration flag support added
+- ✅ Comprehensive unit tests (13 tests passing)
+- ⚠️ Output formatting (context, groupByFile) not yet implemented
+
 ##### 1.2 Type Definition Command
+
 ```typescript
 case "typeDefinition": {
   const [fileArg, lineStr, charStr] = args[0].split(":");
@@ -59,6 +74,7 @@ case "typeDefinition": {
 ```
 
 ##### 1.3 Implementation Command
+
 ```typescript
 case "implementation": {
   const result = await lsp.getImplementation(filePath, line, char);
@@ -67,13 +83,14 @@ case "implementation": {
 ```
 
 ##### 1.4 Symbol Search
+
 ```typescript
 case "symbols": {
   const query = args[0];
-  const symbols = flags.scope === "file" 
+  const symbols = flags.scope === "file"
     ? await lsp.getDocumentSymbols(filePath)
     : await lsp.getWorkspaceSymbols(query);
-  
+
   return formatSymbols(symbols, {
     kind: flags.kind,
     limit: flags.limit
@@ -82,6 +99,7 @@ case "symbols": {
 ```
 
 ##### 1.5 Output Formatter
+
 ```typescript
 // New file: src/formatter.ts
 export class OutputFormatter {
@@ -89,7 +107,7 @@ export class OutputFormatter {
     const lines = this.getContextLines(location, options.context);
     return this.renderBox(lines, location);
   }
-  
+
   private renderBox(lines: Line[], highlight: Range): string {
     // Beautiful box-drawing output with syntax highlighting
   }
@@ -97,7 +115,11 @@ export class OutputFormatter {
 ```
 
 #### Success Criteria
-- [ ] All navigation commands working
+
+- [x] References command working
+- [ ] Type definition command working
+- [ ] Implementation command working
+- [ ] Symbols command working
 - [ ] Context shown for all results
 - [ ] Response time < 100ms
 - [ ] Human-readable and JSON output
@@ -105,11 +127,13 @@ export class OutputFormatter {
 ### Phase 2: Code Understanding (Weeks 3-4) 🟠 HIGH
 
 #### Objectives
+
 Provide rich information about code without opening files.
 
 #### Deliverables
 
 ##### 2.1 Hover Information
+
 ```typescript
 case "hover": {
   const hover = await lsp.getHover(filePath, line, char);
@@ -122,6 +146,7 @@ case "hover": {
 ```
 
 ##### 2.2 Signature Help
+
 ```typescript
 case "signature": {
   const sig = await lsp.getSignatureHelp(filePath, line, char);
@@ -130,6 +155,7 @@ case "signature": {
 ```
 
 ##### 2.3 Document Symbols with Tree View
+
 ```typescript
 case "outline": {
   const symbols = await lsp.getDocumentSymbols(uri);
@@ -138,6 +164,7 @@ case "outline": {
 ```
 
 ##### 2.4 Enhanced Type Information
+
 ```typescript
 case "type-info": {
   const typeInfo = await lsp.getExpandedType(filePath, line, char);
@@ -146,6 +173,7 @@ case "type-info": {
 ```
 
 #### Success Criteria
+
 - [ ] Hover shows type and documentation
 - [ ] Signature help for function calls
 - [ ] Tree view for document symbols
@@ -154,30 +182,33 @@ case "type-info": {
 ### Phase 3: Refactoring Commands (Weeks 5-6) 🟠 HIGH
 
 #### Objectives
+
 Enable safe code transformations from the command line.
 
 #### Deliverables
 
 ##### 3.1 Rename Command
+
 ```typescript
 case "rename": {
   const [fileArg, lineStr, charStr, newName] = args;
   const edit = await lsp.getRenameEdit(filePath, line, char, newName);
-  
+
   if (flags.preview) {
     return formatWorkspaceEdit(edit, { showDiff: true });
   }
-  
+
   const result = await lsp.applyWorkspaceEdit(edit);
   return { applied: result.applied, filesChanged: result.filesChanged };
 }
 ```
 
 ##### 3.2 Code Actions
+
 ```typescript
 case "codeAction": {
   const actions = await lsp.getCodeActions(uri, range, diagnostics);
-  
+
   if (flags.list) {
     return actions.map((a, i) => ({
       index: i,
@@ -185,13 +216,14 @@ case "codeAction": {
       kind: a.kind
     }));
   }
-  
+
   const selected = actions[flags.apply];
   return await lsp.executeCodeAction(selected);
 }
 ```
 
 ##### 3.3 Extract Refactorings
+
 ```typescript
 case "extract-function": {
   const action = await lsp.getExtractFunctionAction(uri, range, name);
@@ -205,6 +237,7 @@ case "extract-variable": {
 ```
 
 #### Success Criteria
+
 - [ ] Rename with preview mode
 - [ ] Code actions list and apply
 - [ ] Extract function/variable
@@ -213,11 +246,13 @@ case "extract-variable": {
 ### Phase 4: Analysis Tools (Weeks 7-8) 🟡 MEDIUM
 
 #### Objectives
+
 Provide deep insights into code quality and structure.
 
 #### Deliverables
 
 ##### 4.1 Enhanced Diagnostics
+
 ```typescript
 interface AnalysisResult {
   diagnostics: Diagnostic[];
@@ -231,6 +266,7 @@ interface AnalysisResult {
 ```
 
 ##### 4.2 Unused Code Detection
+
 ```typescript
 async findUnusedExports(projectPath: string): Promise<UnusedExport[]> {
   // Analyze all exports and their usage
@@ -241,6 +277,7 @@ async findUnusedExports(projectPath: string): Promise<UnusedExport[]> {
 ```
 
 ##### 4.3 Complexity Analysis
+
 ```typescript
 interface ComplexityReport {
   cyclomatic: number;
@@ -251,6 +288,7 @@ interface ComplexityReport {
 ```
 
 #### Success Criteria
+
 - [ ] Find unused exports/variables
 - [ ] Calculate complexity metrics
 - [ ] Provide actionable suggestions
@@ -259,11 +297,13 @@ interface ComplexityReport {
 ### Phase 5: Search Capabilities (Week 9) 🟡 MEDIUM
 
 #### Objectives
+
 Powerful code search beyond simple text matching.
 
 #### Deliverables
 
 ##### 5.1 Text Search Integration
+
 ```typescript
 async searchText(pattern: string, options: SearchOptions): Promise<SearchResult[]> {
   // Use ripgrep with LSP context
@@ -273,6 +313,7 @@ async searchText(pattern: string, options: SearchOptions): Promise<SearchResult[
 ```
 
 ##### 5.2 Semantic Symbol Search
+
 ```typescript
 async searchSymbols(query: string, options: SymbolSearchOptions): Promise<Symbol[]> {
   const symbols = await this.lsp.getWorkspaceSymbols(query);
@@ -281,6 +322,7 @@ async searchSymbols(query: string, options: SymbolSearchOptions): Promise<Symbol
 ```
 
 #### Success Criteria
+
 - [ ] Fast text search with context
 - [ ] Symbol search with ranking
 - [ ] Integration with LSP data
@@ -289,38 +331,42 @@ async searchSymbols(query: string, options: SymbolSearchOptions): Promise<Symbol
 ### Phase 6: Command Migration (Week 10) 🟢 LOW
 
 #### Objectives
+
 Implement new command structure while maintaining compatibility.
 
 #### Deliverables
 
 ##### 6.1 New Command Structure
+
 ```typescript
 // New structure
 program
-  .command('navigate')
-  .description('Code navigation commands')
-  .command('def <position>')
-  .command('refs <position>')
-  .command('type <position>');
+  .command("navigate")
+  .description("Code navigation commands")
+  .command("def <position>")
+  .command("refs <position>")
+  .command("type <position>");
 
 // Compatibility aliases
 program
-  .command('run <alias> definition <args...>')
-  .action((...args) => redirectToNew('navigate', 'def', args));
+  .command("run <alias> definition <args...>")
+  .action((...args) => redirectToNew("navigate", "def", args));
 ```
 
 ##### 6.2 Help System Enhancement
+
 ```typescript
 // Enhanced help with examples
 const examples = {
-  'navigate def': [
-    'lsp-top navigate def src/api.ts:30:15',
-    'lsp-top navigate def src/user.ts:User:1:1'
-  ]
+  "navigate def": [
+    "lsp-top navigate def src/api.ts:30:15",
+    "lsp-top navigate def src/user.ts:User:1:1",
+  ],
 };
 ```
 
 #### Success Criteria
+
 - [ ] New command structure live
 - [ ] Old commands still work
 - [ ] Help includes examples
@@ -331,12 +377,13 @@ const examples = {
 ### Architecture Enhancements
 
 #### 1. Caching Layer
+
 ```typescript
 class CacheManager {
   private symbolCache: Map<string, SymbolInformation[]>;
   private typeCache: Map<string, TypeInfo>;
   private ttl: number = 5000; // 5 seconds
-  
+
   async getOrCompute<T>(key: string, compute: () => Promise<T>): Promise<T> {
     if (this.has(key) && !this.isExpired(key)) {
       return this.get(key);
@@ -349,6 +396,7 @@ class CacheManager {
 ```
 
 #### 2. Output Formatting System
+
 ```typescript
 interface OutputFormat {
   human: (data: any) => string;
@@ -363,6 +411,7 @@ class FormatRegistry {
 ```
 
 #### 3. Performance Monitoring
+
 ```typescript
 class PerformanceMonitor {
   async measure<T>(operation: string, fn: () => Promise<T>): Promise<T> {
@@ -382,18 +431,21 @@ class PerformanceMonitor {
 ### Testing Strategy
 
 #### Unit Tests
+
 - Each command handler
 - Output formatters
 - Cache behavior
 - Error handling
 
 #### Integration Tests
+
 - Full command flow
 - LSP communication
 - File system operations
 - Git integration
 
 #### Performance Tests
+
 - Response time benchmarks
 - Memory usage monitoring
 - Concurrent request handling
@@ -405,7 +457,7 @@ class LSPError extends Error {
   constructor(
     message: string,
     public code: string,
-    public exitCode: number = 1
+    public exitCode: number = 1,
   ) {
     super(message);
   }
@@ -414,12 +466,12 @@ class LSPError extends Error {
 // Graceful degradation
 async function withFallback<T>(
   primary: () => Promise<T>,
-  fallback: () => Promise<T>
+  fallback: () => Promise<T>,
 ): Promise<T> {
   try {
     return await primary();
   } catch (error) {
-    log.warn('Primary method failed, using fallback', error);
+    log.warn("Primary method failed, using fallback", error);
     return await fallback();
   }
 }
@@ -428,26 +480,31 @@ async function withFallback<T>(
 ## Rollout Plan
 
 ### Week 1-2: Phase 1
+
 - Implement navigation commands
 - Deploy to beta testers
 - Gather feedback
 
 ### Week 3-4: Phase 2
+
 - Add understanding commands
 - Update documentation
 - Release v0.9.0
 
 ### Week 5-6: Phase 3
+
 - Implement refactoring
 - Extensive testing
 - Release v0.10.0
 
 ### Week 7-8: Phase 4-5
+
 - Analysis and search
 - Performance optimization
 - Release v0.11.0
 
 ### Week 9-10: Phase 6
+
 - Command migration
 - Final polish
 - Release v1.0.0
@@ -455,18 +512,21 @@ async function withFallback<T>(
 ## Success Metrics
 
 ### Functionality
+
 - ✅ All planned commands implemented
 - ✅ < 200ms response time for navigation
 - ✅ < 1s for analysis operations
 - ✅ Zero data loss in refactoring
 
 ### Quality
+
 - ✅ 90% test coverage
 - ✅ No critical bugs in production
 - ✅ Clear error messages
 - ✅ Comprehensive documentation
 
 ### Adoption
+
 - ✅ 100+ GitHub stars
 - ✅ 50+ active users
 - ✅ 5+ AI tools integrated
@@ -475,11 +535,13 @@ async function withFallback<T>(
 ## Risk Mitigation
 
 ### Technical Risks
+
 - **LSP Compatibility**: Test with multiple TypeScript versions
 - **Performance**: Implement caching and lazy loading
 - **Reliability**: Extensive error handling and recovery
 
 ### User Risks
+
 - **Breaking Changes**: Maintain compatibility layer
 - **Learning Curve**: Provide examples and tutorials
 - **Migration**: Clear upgrade path from v1

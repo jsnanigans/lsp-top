@@ -3,14 +3,13 @@
 import { Command } from "commander";
 import { ConfigManager } from "./config";
 import * as path from "path";
-import { log, setLogLevel, setTraceFlags, Level, metrics } from "./logger";
+import { log, setLogLevel, setTraceFlags, Level, LOG_FILE } from "./logger";
 import { printJsonAndExit, printTextAndExit, result } from "./errors";
 import * as net from "net";
 import { spawn } from "child_process";
 import * as fs from "fs";
 
 const SOCKET_PATH = "/tmp/lsp-top.sock";
-const LOG_FILE = "/tmp/lsp-top.log";
 
 const program = new Command();
 const config = new ConfigManager();
@@ -471,88 +470,110 @@ program
   .option("--write", "Apply edits to disk")
   .option("--log-level <level>", "Set log level (error|warn|info|debug|trace)")
   .option("--trace <flags>", "Comma-separated trace flags")
-  .action(async (alias: string, mode: string, input: string | undefined, options) => {
-    const level = (
-      options.logLevel
-        ? String(options.logLevel)
-        : options.verbose
-          ? "debug"
-          : "info"
-    ) as Level;
-    setLogLevel(level);
-    if (options.trace)
-      setTraceFlags(
-        String(options.trace)
-          .split(",")
-          .map((s) => s.trim())
-          .filter(Boolean),
-      );
-    const projectPath = config.getPath(alias);
-    if (!projectPath) {
-      const msg = `Project '${alias}' not found. Use 'lsp-top list' to see available projects.`;
-      if (options.json) {
-        printJsonAndExit(
-          result({ ok: false, error: msg, code: "ALIAS_NOT_FOUND" }),
-          "ALIAS_NOT_FOUND",
+  .action(
+    async (alias: string, mode: string, input: string | undefined, options) => {
+      const level = (
+        options.logLevel
+          ? String(options.logLevel)
+          : options.verbose
+            ? "debug"
+            : "info"
+      ) as Level;
+      setLogLevel(level);
+      if (options.trace)
+        setTraceFlags(
+          String(options.trace)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
         );
-      } else {
-        printTextAndExit(`Error: ${msg}`, true, "ALIAS_NOT_FOUND");
-      }
-    }
-    const payload = (() => {
-      if (mode === "plan") {
-        const txt = input ? fs.readFileSync(input, "utf-8") : fs.readFileSync(0, "utf-8");
-        return { action: "edit:plan", args: [txt] };
-      }
-      if (mode === "apply") {
-        const txt = input ? fs.readFileSync(input, "utf-8") : fs.readFileSync(0, "utf-8");
-        return { action: "edit:apply", args: [txt] };
-      }
-      printTextAndExit("Error: mode must be plan or apply", true, "BAD_FLAG");
-      return { action: "", args: [] };
-    })();
-    const client = net.connect(SOCKET_PATH, () => {
-      client.write(
-        JSON.stringify({
-          alias,
-          projectPath,
-          ...payload,
-          verbose: options.verbose,
-          logLevel: level,
-          trace: options.trace || "",
-        }),
-      );
-    });
-    let buffer = "";
-    client.on("data", (data) => {
-      buffer += data.toString();
-      let boundary = buffer.indexOf("\n");
-      while (boundary !== -1) {
-        const chunk = buffer.substring(0, boundary);
-        buffer = buffer.substring(boundary + 1);
-        if (chunk) {
-          try {
-            const response = JSON.parse(chunk);
-            if (response.type === "result") {
-              if (options.json) printJsonAndExit(result({ ok: true, data: response.data }));
-              else printTextAndExit(JSON.stringify(response.data, null, 2));
-            } else if (response.type === "error") {
-              if (options.json)
-                printJsonAndExit(result({ ok: false, error: response.message, code: response.code || "DAEMON_UNAVAILABLE" }), "DAEMON_UNAVAILABLE");
-              else printTextAndExit(`Error: ${response.message}`, true, "DAEMON_UNAVAILABLE");
-            }
-          } catch {}
+      const projectPath = config.getPath(alias);
+      if (!projectPath) {
+        const msg = `Project '${alias}' not found. Use 'lsp-top list' to see available projects.`;
+        if (options.json) {
+          printJsonAndExit(
+            result({ ok: false, error: msg, code: "ALIAS_NOT_FOUND" }),
+            "ALIAS_NOT_FOUND",
+          );
+        } else {
+          printTextAndExit(`Error: ${msg}`, true, "ALIAS_NOT_FOUND");
         }
-        boundary = buffer.indexOf("\n");
       }
-    });
-    client.on("error", () => {
-      const msg = "Failed to connect to daemon. Is it running?";
-      if (options.json)
-        printJsonAndExit(result({ ok: false, error: msg, code: "DAEMON_UNAVAILABLE" }), "DAEMON_UNAVAILABLE");
-      else printTextAndExit(msg, true, "DAEMON_UNAVAILABLE");
-    });
-  });
+      const payload = (() => {
+        if (mode === "plan") {
+          const txt = input
+            ? fs.readFileSync(input, "utf-8")
+            : fs.readFileSync(0, "utf-8");
+          return { action: "edit:plan", args: [txt] };
+        }
+        if (mode === "apply") {
+          const txt = input
+            ? fs.readFileSync(input, "utf-8")
+            : fs.readFileSync(0, "utf-8");
+          return { action: "edit:apply", args: [txt] };
+        }
+        printTextAndExit("Error: mode must be plan or apply", true, "BAD_FLAG");
+        return { action: "", args: [] };
+      })();
+      const client = net.connect(SOCKET_PATH, () => {
+        client.write(
+          JSON.stringify({
+            alias,
+            projectPath,
+            ...payload,
+            verbose: options.verbose,
+            logLevel: level,
+            trace: options.trace || "",
+          }),
+        );
+      });
+      let buffer = "";
+      client.on("data", (data) => {
+        buffer += data.toString();
+        let boundary = buffer.indexOf("\n");
+        while (boundary !== -1) {
+          const chunk = buffer.substring(0, boundary);
+          buffer = buffer.substring(boundary + 1);
+          if (chunk) {
+            try {
+              const response = JSON.parse(chunk);
+              if (response.type === "result") {
+                if (options.json)
+                  printJsonAndExit(result({ ok: true, data: response.data }));
+                else printTextAndExit(JSON.stringify(response.data, null, 2));
+              } else if (response.type === "error") {
+                if (options.json)
+                  printJsonAndExit(
+                    result({
+                      ok: false,
+                      error: response.message,
+                      code: response.code || "DAEMON_UNAVAILABLE",
+                    }),
+                    "DAEMON_UNAVAILABLE",
+                  );
+                else
+                  printTextAndExit(
+                    `Error: ${response.message}`,
+                    true,
+                    "DAEMON_UNAVAILABLE",
+                  );
+              }
+            } catch {}
+          }
+          boundary = buffer.indexOf("\n");
+        }
+      });
+      client.on("error", () => {
+        const msg = "Failed to connect to daemon. Is it running?";
+        if (options.json)
+          printJsonAndExit(
+            result({ ok: false, error: msg, code: "DAEMON_UNAVAILABLE" }),
+            "DAEMON_UNAVAILABLE",
+          );
+        else printTextAndExit(msg, true, "DAEMON_UNAVAILABLE");
+      });
+    },
+  );
 
 program
   .command("run <alias> <action> [args...]")
@@ -562,6 +583,10 @@ program
   .option("--json", "Output machine-readable JSON only")
   .option("--log-level <level>", "Set log level (error|warn|info|debug|trace)")
   .option("--trace <flags>", "Comma-separated trace flags")
+  .option(
+    "--include-declaration",
+    "Include declaration in references (for references action)",
+  )
   .action(async (alias: string, action: string, args: string[], options) => {
     const level = (
       options.logLevel
@@ -591,10 +616,16 @@ program
       }
     }
     const client = net.connect(SOCKET_PATH, () => {
+      // For references action, add flags as second argument
+      const finalArgs =
+        action === "references" && options.includeDeclaration
+          ? [...args, JSON.stringify({ includeDeclaration: true })]
+          : args;
+
       const request = {
         alias,
         action,
-        args,
+        args: finalArgs,
         projectPath,
         verbose: options.verbose,
         logLevel: level,

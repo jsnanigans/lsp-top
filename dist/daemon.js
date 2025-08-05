@@ -187,6 +187,20 @@ class Daemon {
                 }
                 return await lsp.getDefinition(filePath, line, char);
             }
+            case "references": {
+                if (!args[0]) {
+                    throw new Error("File path and position required (e.g., file.ts:10:5)");
+                }
+                const [fileArg, lineStr, charStr] = args[0].split(":");
+                const filePath = (0, path_utils_1.resolveProjectPath)(projectPath, fileArg);
+                const line = parseInt(lineStr, 10);
+                const char = parseInt(charStr, 10);
+                if (isNaN(line) || isNaN(char)) {
+                    throw new Error("Invalid position format. Use file.ts:line:column");
+                }
+                const flags = JSON.parse(args[1] || "{}");
+                return await lsp.getReferences(filePath, line, char, flags.includeDeclaration);
+            }
             case "inspect:file": {
                 if (!args[0])
                     throw new Error("File path required");

@@ -3,9 +3,21 @@ import * as path from "path";
 import * as fs from "fs";
 import { log, time } from "../logger";
 
-type WorkspaceTextEdit = { range: { start: { line: number; character: number }; end: { line: number; character: number } }; newText: string };
+type WorkspaceTextEdit = {
+  range: {
+    start: { line: number; character: number };
+    end: { line: number; character: number };
+  };
+  newText: string;
+};
 
-type WorkspaceEdit = { documentChanges?: { textDocument: { uri: string }; edits: WorkspaceTextEdit[] }[]; changes?: Record<string, WorkspaceTextEdit[]> };
+type WorkspaceEdit = {
+  documentChanges?: {
+    textDocument: { uri: string };
+    edits: WorkspaceTextEdit[];
+  }[];
+  changes?: Record<string, WorkspaceTextEdit[]>;
+};
 
 export class TypeScriptLSP {
   private client: LSPClient;
@@ -123,6 +135,42 @@ export class TypeScriptLSP {
     );
   }
 
+  async getReferences(
+    filePath: string,
+    line: number,
+    character: number,
+    includeDeclaration: boolean = false,
+  ): Promise<any> {
+    const uri = `file://${filePath}`;
+    const content = fs.readFileSync(filePath, "utf-8");
+
+    if (!this.openDocuments.has(uri)) {
+      this.client.sendMessage({
+        jsonrpc: "2.0",
+        method: "textDocument/didOpen",
+        params: {
+          textDocument: {
+            uri,
+            languageId: "typescript",
+            version: 1,
+            text: content,
+          },
+        },
+      });
+      this.openDocuments.add(uri);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    return await time("typescript.references", async () =>
+      this.client.getReferences(
+        uri,
+        line - 1,
+        character - 1,
+        includeDeclaration,
+      ),
+    );
+  }
+
   private async codeActions(uri: string, diagnostics: any[]): Promise<any[]> {
     const range = {
       start: { line: 0, character: 0 },
@@ -233,7 +281,10 @@ export class TypeScriptLSP {
       out.documentChanges = [];
       for (const dc of edit.documentChanges) {
         if (dc && dc.textDocument && Array.isArray(dc.edits)) {
-          out.documentChanges.push({ textDocument: { uri: dc.textDocument.uri }, edits: dc.edits });
+          out.documentChanges.push({
+            textDocument: { uri: dc.textDocument.uri },
+            edits: dc.edits,
+          });
         }
       }
     }

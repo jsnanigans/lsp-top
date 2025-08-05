@@ -1,9 +1,11 @@
 # LSP-Top CLI Design v2
 
 ## Purpose
+
 A powerful command-line IDE that provides Language Server Protocol functionality through an intuitive CLI interface. LSP-Top enables developers and AI agents to understand, navigate, and refactor codebases without traditional editors, making it the "grep for code understanding."
 
 ## Core Philosophy
+
 - **Information First**: Every command provides rich, contextual information
 - **Progressive Disclosure**: Simple defaults with detailed options
 - **Composable**: Commands work together via pipes and scripts
@@ -11,6 +13,7 @@ A powerful command-line IDE that provides Language Server Protocol functionality
 - **Action-Oriented**: From information to action in one step
 
 ## Guiding Principles
+
 - **Minimal, orthogonal verbs**: Cover 90% of use cases without combinatorial flags
 - **Consistent shapes**: Positions (file:line:col), ranges (start:end or L1:C1-L2:C2)
 - **Safe by default**: `--preview` shows changes, `--write` applies them
@@ -21,6 +24,7 @@ A powerful command-line IDE that provides Language Server Protocol functionality
 ## Command Structure
 
 ### Top-Level Command Groups
+
 1. **navigate** - Code navigation (def, refs, type, impl, symbols)
 2. **explore** - Code understanding (hover, signature, outline, symbols)
 3. **analyze** - Code quality (diagnostics, unused code, complexity)
@@ -31,6 +35,7 @@ A powerful command-line IDE that provides Language Server Protocol functionality
 8. **daemon** - Service management (start, stop, status)
 
 ### Global Conventions
+
 - **Options**: `-v, --verbose`, `-q, --quiet`, `--json`, `--log-level <level>`, `--trace <flags>`
 - **Position**: `file.ts:line:col` (1-based)
 - **Range**: `start:end` or `L1:C1-L2:C2`
@@ -41,6 +46,7 @@ A powerful command-line IDE that provides Language Server Protocol functionality
 ## Command Reference
 
 ### Navigate - Code Navigation
+
 ```bash
 navigate def <file:line:col>                    # Go to definition
 navigate refs <file:line:col> [options]         # Find references
@@ -57,6 +63,7 @@ navigate symbol <query> [options]               # Search symbols by name
 ```
 
 ### Explore - Code Understanding
+
 ```bash
 explore hover <file:line:col>                   # Show type info and docs
 explore signature <file:line:col>               # Show signature help
@@ -68,6 +75,7 @@ explore type-def <file:line:col>                # Full type definition
 ```
 
 ### Analyze - Code Quality
+
 ```bash
 analyze file <file> [options]                   # Analyze single file
   --severity <level>                           # Min severity
@@ -83,6 +91,7 @@ analyze complexity <file>                       # Complexity metrics
 ```
 
 ### Refactor - Code Transformation
+
 ```bash
 refactor rename <file:line:col> <newName> [options]
   --preview                                    # Preview changes
@@ -98,6 +107,7 @@ refactor format <file> [options]
 ```
 
 ### Search - Find Code
+
 ```bash
 search text <pattern> [options]                 # Text search
   --glob <pattern>                             # File pattern
@@ -108,6 +118,7 @@ search symbol <query> [options]                 # Symbol search
 ```
 
 ### Edit - Direct Editing
+
 ```bash
 edit apply <file>                               # Apply WorkspaceEdit
 edit plan <file> [options]                      # Create edit plan
@@ -116,6 +127,7 @@ edit plan <file> [options]                      # Create edit plan
 ```
 
 ### Project Management
+
 ```bash
 project init <alias> [path]                     # Initialize project
 project list                                    # List projects
@@ -124,6 +136,7 @@ project run <alias> -- <command>                # Run in project context
 ```
 
 ### Daemon Management
+
 ```bash
 daemon start [options]                          # Start daemon
   --log-level <level>
@@ -138,6 +151,7 @@ daemon logs [options]                           # View logs
 ## Output Formats
 
 ### Human-Readable (Default)
+
 ```
 ┌─ src/service.ts:45:10 ─────────────────────────┐
 │ 43 │   async processUser(id: string) {         │
@@ -148,12 +162,13 @@ daemon logs [options]                           # View logs
 └─────────────────────────────────────────────────┘
   Type: (method) User.process(): Promise<Result>
   Defined at: src/models/user.ts:23:5
-  
+
   Documentation:
   Processes the user data and returns a result.
 ```
 
 ### JSON Format (--json)
+
 ```json
 {
   "schemaVersion": "v2",
@@ -182,6 +197,7 @@ daemon logs [options]                           # View logs
 ## JSON Schemas
 
 ### Location
+
 ```typescript
 interface Location {
   uri: string;
@@ -195,7 +211,7 @@ interface Range {
 }
 
 interface Position {
-  line: number;      // 0-based
+  line: number; // 0-based
   character: number; // 0-based
 }
 
@@ -206,6 +222,7 @@ interface Preview {
 ```
 
 ### CommandResult
+
 ```typescript
 interface CommandResult<T = any> {
   schemaVersion: "v2";
@@ -220,18 +237,21 @@ interface CommandResult<T = any> {
 ## Implementation Architecture
 
 ### Daemon Architecture
+
 - Unix socket at `/tmp/lsp-top.sock`
 - Single-writer policy
 - Persistent LSP connections per project
 - Intelligent caching with invalidation
 
 ### Performance Targets
+
 - Navigation commands: < 100ms
 - Analysis commands: < 500ms
 - Refactoring preview: < 1s
 - Memory usage: < 200MB per project
 
 ### Language Server Integration
+
 - Primary: TypeScript (tsserver)
 - Future: Python (pylsp), Rust (rust-analyzer), Go (gopls)
 - Graceful degradation for missing features
@@ -239,6 +259,7 @@ interface CommandResult<T = any> {
 ## Use Cases
 
 ### Human Developer
+
 ```bash
 # Quick navigation
 lsp-top navigate def src/api.ts:30:15
@@ -254,6 +275,7 @@ lsp-top analyze changed --fix
 ```
 
 ### AI Agent
+
 ```python
 # Analyze codebase
 result = run_command("lsp-top analyze file src/service.ts --json")
@@ -272,11 +294,13 @@ if len(preview["data"]["changes"]) < 10:
 ## Migration Path
 
 ### From v1 to v2
+
 - Old: `lsp-top run <alias> definition <args>`
 - New: `lsp-top navigate def <args>`
 - Compatibility layer maintains old commands
 
 ### Incremental Adoption
+
 1. Phase 1: Core navigation commands
 2. Phase 2: Explore commands
 3. Phase 3: Refactoring commands
@@ -284,6 +308,7 @@ if len(preview["data"]["changes"]) < 10:
 5. Phase 5: Command structure migration
 
 ## Success Metrics
+
 - **Adoption**: Used in 50+ projects within 6 months
 - **Performance**: 95th percentile < 200ms for navigation
 - **Reliability**: 99.9% uptime for daemon
@@ -291,6 +316,7 @@ if len(preview["data"]["changes"]) < 10:
 - **Integration**: Used by 5+ AI coding assistants
 
 ## Future Enhancements
+
 - Multi-language support beyond TypeScript
 - Integration with build tools and linters
 - Tree-sitter for syntax-aware operations

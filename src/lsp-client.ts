@@ -292,4 +292,17 @@ export class LSPClient {
       position: { line, character },
     });
   }
+
+  async getReferences(
+    uri: string,
+    line: number,
+    character: number,
+    includeDeclaration: boolean = false,
+  ): Promise<any> {
+    return this.sendRequest("textDocument/references", {
+      textDocument: { uri },
+      position: { line, character },
+      context: { includeDeclaration },
+    });
+  }
 }

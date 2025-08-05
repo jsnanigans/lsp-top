@@ -250,5 +250,12 @@ class LSPClient {
             position: { line, character },
         });
     }
+    async getReferences(uri, line, character, includeDeclaration = false) {
+        return this.sendRequest("textDocument/references", {
+            textDocument: { uri },
+            position: { line, character },
+            context: { includeDeclaration },
+        });
+    }
 }
 exports.LSPClient = LSPClient;

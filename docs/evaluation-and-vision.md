@@ -3,6 +3,7 @@
 ## Current State Analysis
 
 ### What Works Well
+
 1. **Core Infrastructure**: Daemon architecture, LSP client, and CLI framework are solid
 2. **Inspect Pipeline**: Complete implementation for diagnostics, fixes, and formatting
 3. **Edit Operations**: Basic WorkspaceEdit application functionality
@@ -11,6 +12,7 @@
 ### Critical Gaps for Command-Line IDE Experience
 
 #### 1. **Navigation is Severely Limited**
+
 - Only `definition` command exists
 - Missing essential navigation:
   - `type` - What type does this expression have?
@@ -20,6 +22,7 @@
   - `hover` - What documentation/type info is available?
 
 #### 2. **No Code Understanding Tools**
+
 - No way to explore code structure
 - No symbol search
 - No call hierarchy
@@ -27,6 +30,7 @@
 - No documentation access
 
 #### 3. **Limited Refactoring Capabilities**
+
 - Only format/organize imports via inspect
 - Missing critical refactors:
   - `rename` - Rename symbols across the project
@@ -35,6 +39,7 @@
   - `move` - Move symbol to another file
 
 #### 4. **Poor Human Interface**
+
 - Output is raw JSON or minimal text
 - No code previews with context
 - No syntax highlighting
@@ -43,6 +48,7 @@
 ## Vision: Command-Line IDE
 
 ### Core Philosophy
+
 `lsp-top` should provide **80% of IDE functionality** through simple, composable commands that work seamlessly for both humans and AI agents.
 
 ### Key Design Principles
@@ -56,6 +62,7 @@
 ### Essential Command Groups
 
 #### 1. **Explore** - Understanding Code
+
 ```bash
 # What is this?
 lsp-top explore hover src/index.ts:10:5
@@ -75,6 +82,7 @@ lsp-top explore implementation src/interface.ts:5:10
 ```
 
 #### 2. **Navigate** - Moving Through Code
+
 ```bash
 # Go to definition
 lsp-top navigate def src/index.ts:10:5
@@ -94,6 +102,7 @@ lsp-top navigate calls src/service.ts:30:5 --direction in
 ```
 
 #### 3. **Analyze** - Code Quality
+
 ```bash
 # Check file/project
 lsp-top analyze file src/index.ts
@@ -113,6 +122,7 @@ lsp-top analyze complexity src/service.ts
 ```
 
 #### 4. **Refactor** - Code Transformation
+
 ```bash
 # Rename across project
 lsp-top refactor rename src/old.ts:10:5 "newName" --preview
@@ -132,6 +142,7 @@ lsp-top refactor inline src/code.ts:15:8
 ```
 
 #### 5. **Generate** - Code Creation
+
 ```bash
 # Generate implementation
 lsp-top generate implementation src/interface.ts:IService
@@ -149,6 +160,7 @@ lsp-top generate docs src/api.ts --format jsdoc
 ### Output Format Design
 
 #### Human-Friendly Output
+
 ```
 ┌─ src/service.ts:45:10 ─────────────────────────┐
 │ 43 │   async processUser(id: string) {         │
@@ -162,6 +174,7 @@ lsp-top generate docs src/api.ts --format jsdoc
 ```
 
 #### Machine-Friendly Output (--json)
+
 ```json
 {
   "schemaVersion": "v1",
@@ -188,6 +201,7 @@ lsp-top generate docs src/api.ts --format jsdoc
 ### Integration with Command-Line Workflow
 
 #### 1. **Verification Workflow**
+
 ```bash
 # After editing a file
 lsp-top analyze file src/service.ts --fix | lsp-top edit apply
@@ -197,6 +211,7 @@ lsp-top analyze changed --since HEAD
 ```
 
 #### 2. **Exploration Workflow**
+
 ```bash
 # Understand a codebase
 lsp-top explore symbols --tree | grep -E "class|interface"
@@ -207,6 +222,7 @@ lsp-top explore hover src/api.ts:15:10 | grep -A5 "Returns:"
 ```
 
 #### 3. **Refactoring Workflow**
+
 ```bash
 # Safe rename
 lsp-top refactor rename src/old.ts:10:5 "newName" --dry-run > changes.json
@@ -232,12 +248,14 @@ lsp-top edit apply changes.json
 ### Language Agnostic Design
 
 The command structure should work for any LSP:
+
 - TypeScript/JavaScript
 - Python (pylsp)
 - Rust (rust-analyzer)
 - Go (gopls)
 
 Commands map to standard LSP methods:
+
 - `explore hover` → `textDocument/hover`
 - `navigate def` → `textDocument/definition`
 - `refactor rename` → `textDocument/rename`
@@ -262,21 +280,25 @@ Commands map to standard LSP methods:
 ## Implementation Priorities
 
 ### Phase 1: Core Navigation (Week 1-2)
+
 1. Implement missing jump commands (type, refs, impl, symbols)
 2. Add hover information
 3. Improve output formatting with context
 
 ### Phase 2: Analysis Tools (Week 3-4)
+
 1. Enhance inspect with better formatting
 2. Add unused code detection
 3. Add complexity analysis
 
 ### Phase 3: Refactoring (Week 5-6)
+
 1. Implement rename command
 2. Add extract function/variable
 3. Add move symbol
 
 ### Phase 4: Polish (Week 7-8)
+
 1. Syntax highlighting in output
 2. Interactive mode for ambiguous results
 3. Performance optimizations

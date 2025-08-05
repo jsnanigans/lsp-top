@@ -11,8 +11,9 @@ lsp-top [global-options] <command> <subcommand> [options] [arguments]
 ```
 
 ### Global Options
+
 - `-v, --verbose` - Enable verbose logging
-- `-q, --quiet` - Suppress non-error output  
+- `-q, --quiet` - Suppress non-error output
 - `--json` - Output machine-readable JSON
 - `--log-level <level>` - Set log level (error|warn|info|debug|trace)
 - `--trace <flags>` - Enable trace flags for debugging
@@ -22,6 +23,7 @@ lsp-top [global-options] <command> <subcommand> [options] [arguments]
 ### 1. Navigate - Code Navigation
 
 #### `navigate def <file:line:col>`
+
 Jump to definition of symbol at position.
 
 ```bash
@@ -33,31 +35,46 @@ lsp-top navigate def src/service.ts:10:15 --json
 ```
 
 Output includes:
+
 - Definition location
 - Preview of definition with context
 - File path and range
 
-#### `navigate refs <file:line:col> [options]`
+#### `navigate refs <file:line:col> [options]` ✅ IMPLEMENTED
+
 Find all references to symbol.
 
-Options:
-- `--include-declaration` - Include the declaration
-- `--context <n>` - Show n lines of context (default: 2)
-- `--limit <n>` - Limit results
-- `--group-by-file` - Group results by file
+**Current Implementation:**
 
 ```bash
-# Find all references
+# Using run command (current)
+lsp-top run <alias> references <file:line:col> [--include-declaration]
+
+# Example
+lsp-top run myapp references src/user.ts:15:10 --include-declaration
+```
+
+**Future v1.0 Interface:**
+Options:
+
+- `--include-declaration` - Include the declaration ✅
+- `--context <n>` - Show n lines of context (default: 2) ⚠️ Not yet implemented
+- `--limit <n>` - Limit results ⚠️ Not yet implemented
+- `--group-by-file` - Group results by file ⚠️ Not yet implemented
+
+```bash
+# Find all references (future)
 lsp-top navigate refs src/user.ts:15:10
 
-# With context
+# With context (future)
 lsp-top navigate refs src/user.ts:15:10 --context 3
 
-# Grouped by file
+# Grouped by file (future)
 lsp-top navigate refs src/api.ts:20:5 --group-by-file
 ```
 
 #### `navigate type <file:line:col>`
+
 Jump to type definition.
 
 ```bash
@@ -66,6 +83,7 @@ lsp-top navigate type src/service.ts:25:10
 ```
 
 #### `navigate impl <file:line:col>`
+
 Find implementations of interface/abstract class.
 
 ```bash
@@ -74,9 +92,11 @@ lsp-top navigate impl src/interface.ts:10:5
 ```
 
 #### `navigate symbol <query> [options]`
+
 Search for symbols by name.
 
 Options:
+
 - `--kind <kind>` - Filter by kind (class|interface|function|variable|etc)
 - `--scope <scope>` - Search scope (file|workspace)
 - `--exact` - Exact match only
@@ -96,6 +116,7 @@ lsp-top navigate symbol "getUserById" --exact
 ### 2. Explore - Code Understanding
 
 #### `explore hover <file:line:col>`
+
 Show hover information (type, docs, signature).
 
 ```bash
@@ -116,9 +137,11 @@ lsp-top explore hover src/api.ts:30:15
 ```
 
 #### `explore symbols <file> [options]`
+
 List symbols in file/workspace.
 
 Options:
+
 - `--tree` - Show as tree structure
 - `--kind <kind>` - Filter by symbol kind
 - `--sort <by>` - Sort by name|kind|line
@@ -135,6 +158,7 @@ lsp-top explore symbols src/models.ts --kind class,interface
 ```
 
 #### `explore signature <file:line:col>`
+
 Show signature help for function calls.
 
 ```bash
@@ -143,6 +167,7 @@ lsp-top explore signature src/app.ts:45:20
 ```
 
 #### `explore outline <file>`
+
 Show document outline with all symbols.
 
 ```bash
@@ -153,9 +178,11 @@ lsp-top explore outline src/service.ts
 ### 3. Analyze - Code Quality
 
 #### `analyze file <file> [options]`
+
 Analyze file for issues.
 
 Options:
+
 - `--severity <level>` - Minimum severity (error|warning|info|hint)
 - `--fix-preview` - Show available fixes
 - `--fix` - Apply fixes automatically
@@ -173,9 +200,11 @@ lsp-top analyze file src/utils.ts --fix-preview
 ```
 
 #### `analyze changed [options]`
+
 Analyze changed files (git).
 
 Options:
+
 - `--staged` - Only staged files
 - `--since <ref>` - Changes since git ref
 - `--fix` - Apply fixes
@@ -193,9 +222,11 @@ lsp-top analyze changed --since main
 ```
 
 #### `analyze unused [options]`
+
 Find unused code.
 
 Options:
+
 - `--type <type>` - Type of unused code (exports|variables|imports|all)
 - `--ignore <pattern>` - Ignore files matching pattern
 
@@ -210,9 +241,11 @@ lsp-top analyze unused --type all
 ### 4. Refactor - Code Transformation
 
 #### `refactor rename <file:line:col> <newName> [options]`
+
 Rename symbol across project.
 
 Options:
+
 - `--preview` - Preview changes without applying
 - `--interactive` - Confirm each change
 
@@ -225,9 +258,11 @@ lsp-top refactor rename src/api.ts:15:10 "updateUser" --preview
 ```
 
 #### `refactor extract-function <file:start:end> <name> [options]`
+
 Extract code into function.
 
 Options:
+
 - `--target <location>` - Where to place function
 - `--async` - Make function async
 
@@ -240,6 +275,7 @@ lsp-top refactor extract-function src/api.ts:50:5-60:15 "fetchData" --async
 ```
 
 #### `refactor organize-imports <file>`
+
 Organize and clean up imports.
 
 ```bash
@@ -251,9 +287,11 @@ lsp-top refactor organize-imports src/*.ts
 ```
 
 #### `refactor format <file> [options]`
+
 Format code.
 
 Options:
+
 - `--check` - Check if formatted, don't modify
 - `--config <file>` - Use specific config file
 
@@ -268,6 +306,7 @@ lsp-top refactor format src/code.ts --check
 ### 5. Edit - Direct Editing
 
 #### `edit apply <file>`
+
 Apply WorkspaceEdit from JSON file.
 
 ```bash
@@ -279,6 +318,7 @@ cat changes.json | lsp-top edit apply -
 ```
 
 #### `edit plan <file>`
+
 Create edit plan from changes.
 
 ```bash
@@ -289,6 +329,7 @@ lsp-top edit plan src/file.ts > plan.json
 ### 6. Project Management
 
 #### `project init <alias> [path]`
+
 Initialize project with alias.
 
 ```bash
@@ -300,6 +341,7 @@ lsp-top project init backend /path/to/backend
 ```
 
 #### `project list`
+
 List all projects.
 
 ```bash
@@ -307,6 +349,7 @@ lsp-top project list
 ```
 
 #### `project remove <alias>`
+
 Remove project alias.
 
 ```bash
@@ -316,6 +359,7 @@ lsp-top project remove myapp
 ### 7. Daemon Management
 
 #### `daemon start`
+
 Start the LSP daemon.
 
 ```bash
@@ -323,6 +367,7 @@ lsp-top daemon start
 ```
 
 #### `daemon stop`
+
 Stop the daemon.
 
 ```bash
@@ -330,6 +375,7 @@ lsp-top daemon stop
 ```
 
 #### `daemon status`
+
 Check daemon status.
 
 ```bash
@@ -445,6 +491,7 @@ lsp-top navigate refs src/api.ts:30:15 --group-by-file
 ## Troubleshooting
 
 ### Daemon Issues
+
 ```bash
 # Check status
 lsp-top daemon status
@@ -457,6 +504,7 @@ lsp-top daemon logs --tail 50
 ```
 
 ### Performance Issues
+
 ```bash
 # Enable tracing
 lsp-top --trace perf navigate def src/slow.ts:10:5

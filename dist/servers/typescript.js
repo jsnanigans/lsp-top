@@ -132,6 +132,27 @@ class TypeScriptLSP {
         }
         return await (0, logger_1.time)("typescript.definition", async () => this.client.getDefinition(uri, line - 1, character - 1));
     }
+    async getReferences(filePath, line, character, includeDeclaration = false) {
+        const uri = `file://${filePath}`;
+        const content = fs.readFileSync(filePath, "utf-8");
+        if (!this.openDocuments.has(uri)) {
+            this.client.sendMessage({
+                jsonrpc: "2.0",
+                method: "textDocument/didOpen",
+                params: {
+                    textDocument: {
+                        uri,
+                        languageId: "typescript",
+                        version: 1,
+                        text: content,
+                    },
+                },
+            });
+            this.openDocuments.add(uri);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+        return await (0, logger_1.time)("typescript.references", async () => this.client.getReferences(uri, line - 1, character - 1, includeDeclaration));
+    }
     async codeActions(uri, diagnostics) {
         const range = {
             start: { line: 0, character: 0 },

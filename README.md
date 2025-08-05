@@ -94,10 +94,12 @@ lsp-top inspect myapp changed --staged --fix
 ### Code Navigation (Current)
 ```bash
 lsp-top run <alias> definition <file:line:col>
+lsp-top run <alias> references <file:line:col> [--include-declaration]
 lsp-top run <alias> diagnostics <file>
 
 # Examples
 lsp-top run myapp definition src/api.ts:30:15
+lsp-top run myapp references src/user.ts:10:5 --include-declaration
 lsp-top run myapp diagnostics src/service.ts
 ```
 
@@ -255,10 +257,11 @@ See the [docs](./docs) directory for:
 - ✅ Basic infrastructure (daemon, LSP client)
 - ✅ Project management
 - ✅ Code inspection (diagnostics, fixes)
-- ✅ Single navigation command (definition)
+- ✅ Navigation commands: definition, references
 
 ### v1.0 (Target)
-- [ ] Complete navigation suite (refs, type, impl, symbols)
+- [x] References navigation (completed)
+- [ ] Complete navigation suite (type, impl, symbols)
 - [ ] Code understanding tools (hover, signature, outline)
 - [ ] Refactoring commands (rename, extract)
 - [ ] Enhanced output formatting

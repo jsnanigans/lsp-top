@@ -43,7 +43,6 @@ const net = __importStar(require("net"));
 const child_process_1 = require("child_process");
 const fs = __importStar(require("fs"));
 const SOCKET_PATH = "/tmp/lsp-top.sock";
-const LOG_FILE = "/tmp/lsp-top.log";
 const program = new commander_1.Command();
 const config = new config_1.ConfigManager();
 program
@@ -150,8 +149,8 @@ program
         : null;
     const levelInfo = (() => {
         try {
-            const content = fs.existsSync(LOG_FILE)
-                ? fs.readFileSync(LOG_FILE, "utf-8")
+            const content = fs.existsSync(logger_1.LOG_FILE)
+                ? fs.readFileSync(logger_1.LOG_FILE, "utf-8")
                 : "";
             const lines = content.trim().split("\n");
             for (let i = lines.length - 1; i >= 0; i--) {
@@ -169,11 +168,11 @@ program
             return null;
         }
     })();
-    if (!fs.existsSync(LOG_FILE)) {
+    if (!fs.existsSync(logger_1.LOG_FILE)) {
         (0, errors_1.printTextAndExit)("Log file not found.", true, "STATUS_ERROR");
         return;
     }
-    const readAll = () => fs.readFileSync(LOG_FILE, "utf-8").split("\n");
+    const readAll = () => fs.readFileSync(logger_1.LOG_FILE, "utf-8").split("\n");
     const printHeader = () => {
         console.log(`PID: ${pid ?? "unknown"}`);
         console.log(`Level: ${levelInfo ?? "unknown"}`);
@@ -192,13 +191,13 @@ program
     };
     if (options.follow) {
         printHeader();
-        let lastSize = fs.statSync(LOG_FILE).size;
+        let lastSize = fs.statSync(logger_1.LOG_FILE).size;
         output(readAll());
         const interval = setInterval(() => {
             try {
-                const stat = fs.statSync(LOG_FILE);
+                const stat = fs.statSync(logger_1.LOG_FILE);
                 if (stat.size > lastSize) {
-                    const content = fs.readFileSync(LOG_FILE, "utf-8");
+                    const content = fs.readFileSync(logger_1.LOG_FILE, "utf-8");
                     const lines = content.split("\n");
                     output(lines);
                     lastSize = stat.size;
@@ -524,6 +523,7 @@ program
     .option("--json", "Output machine-readable JSON only")
     .option("--log-level <level>", "Set log level (error|warn|info|debug|trace)")
     .option("--trace <flags>", "Comma-separated trace flags")
+    .option("--include-declaration", "Include declaration in references (for references action)")
     .action(async (alias, action, args, options) => {
     const level = (options.logLevel
         ? String(options.logLevel)
@@ -547,10 +547,14 @@ program
         }
     }
     const client = net.connect(SOCKET_PATH, () => {
+        // For references action, add flags as second argument
+        const finalArgs = action === "references" && options.includeDeclaration
+            ? [...args, JSON.stringify({ includeDeclaration: true })]
+            : args;
         const request = {
             alias,
             action,
-            args,
+            args: finalArgs,
             projectPath,
             verbose: options.verbose,
             logLevel: level,
