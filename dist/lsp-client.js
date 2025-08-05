@@ -15,26 +15,30 @@ class LSPClient {
     }
     async start() {
         return new Promise((resolve, reject) => {
-            (0, logger_1.log)('info', 'Starting LSP', { cmd: this.command, args: this.args, cwd: this.workspaceRoot });
-            (0, logger_1.log)('debug', 'Working directory', { cwd: this.workspaceRoot });
+            (0, logger_1.log)("info", "Starting LSP", {
+                cmd: this.command,
+                args: this.args,
+                cwd: this.workspaceRoot,
+            });
+            (0, logger_1.log)("debug", "Working directory", { cwd: this.workspaceRoot });
             this.process = (0, child_process_1.spawn)(this.command, this.args, {
                 cwd: this.workspaceRoot,
-                stdio: ['pipe', 'pipe', 'pipe'],
+                stdio: ["pipe", "pipe", "pipe"],
                 env: { ...process.env },
-                shell: true
+                shell: true,
             });
             if (!this.process.stdout || !this.process.stdin) {
-                reject(new Error('Failed to create process streams'));
+                reject(new Error("Failed to create process streams"));
                 return;
             }
-            let buffer = '';
+            let buffer = "";
             let contentLength = 0;
             let isReadingHeaders = true;
-            this.process.stdout.on('data', (data) => {
+            this.process.stdout.on("data", (data) => {
                 buffer += data.toString();
                 while (buffer.length > 0) {
                     if (isReadingHeaders) {
-                        const headerEnd = buffer.indexOf('\r\n\r\n');
+                        const headerEnd = buffer.indexOf("\r\n\r\n");
                         if (headerEnd === -1)
                             break;
                         const headerSection = buffer.substring(0, headerEnd);
@@ -54,7 +58,7 @@ class LSPClient {
                                 this.handleMessage(message);
                             }
                             catch (e) {
-                                console.error('Failed to parse LSP message:', e, 'Content:', messageContent);
+                                console.error("Failed to parse LSP message:", e, "Content:", messageContent);
                             }
                             contentLength = 0;
                             isReadingHeaders = true;
@@ -65,53 +69,58 @@ class LSPClient {
                     }
                 }
             });
-            this.process.stderr?.on('data', (data) => {
-                (0, logger_1.log)('warn', 'LSP stderr', { data: String(data) });
+            this.process.stderr?.on("data", (data) => {
+                (0, logger_1.log)("warn", "LSP stderr", { data: String(data) });
             });
-            this.process.on('error', (error) => {
-                (0, logger_1.log)('error', 'LSP process error', { error: String(error) });
+            this.process.on("error", (error) => {
+                (0, logger_1.log)("error", "LSP process error", { error: String(error) });
                 reject(error);
             });
-            this.process.on('exit', (code) => {
+            this.process.on("exit", (code) => {
                 // Only log if unexpected exit
                 if (code !== 0 && code !== null) {
-                    (0, logger_1.log)('warn', 'LSP server exited', { code });
+                    (0, logger_1.log)("warn", "LSP server exited", { code });
                 }
             });
             setTimeout(() => {
-                (0, logger_1.log)('info', 'LSP server started');
+                (0, logger_1.log)("info", "LSP server started");
                 resolve();
             }, 100);
         });
     }
     handleMessage(message) {
-        (0, logger_1.log)('trace', 'LSP received', { preview: JSON.stringify(message).slice(0, 200) + '...' });
+        (0, logger_1.log)("trace", "LSP received", {
+            preview: JSON.stringify(message).slice(0, 200) + "...",
+        });
         if (message.id !== undefined && this.responseHandlers.has(message.id)) {
             const handler = this.responseHandlers.get(message.id);
             this.responseHandlers.delete(message.id);
             handler(message);
         }
         else if (message.method) {
-            if (message.method === 'textDocument/publishDiagnostics') {
+            if (message.method === "textDocument/publishDiagnostics") {
                 const uri = message.params?.uri;
                 const diagnostics = message.params?.diagnostics || [];
-                (0, logger_1.log)('debug', 'Diagnostics received', { uri, count: diagnostics.length });
+                (0, logger_1.log)("debug", "Diagnostics received", {
+                    uri,
+                    count: diagnostics.length,
+                });
                 if (uri) {
                     this.diagnostics.set(uri, diagnostics);
                 }
             }
-            else if (message.method === 'workspace/configuration') {
+            else if (message.method === "workspace/configuration") {
                 // Handle workspace configuration request from server
-                (0, logger_1.log)('debug', 'Server requesting workspace configuration');
+                (0, logger_1.log)("debug", "Server requesting workspace configuration");
                 const response = {
-                    jsonrpc: '2.0',
+                    jsonrpc: "2.0",
                     id: message.id,
-                    result: message.params?.items?.map(() => ({})) || [{}]
+                    result: message.params?.items?.map(() => ({})) || [{}],
                 };
                 this.sendMessage(response);
             }
-            else if (message.method !== 'window/logMessage') {
-                (0, logger_1.log)('debug', 'Unhandled notification', { method: message.method });
+            else if (message.method !== "window/logMessage") {
+                (0, logger_1.log)("debug", "Unhandled notification", { method: message.method });
             }
         }
     }
@@ -121,10 +130,10 @@ class LSPClient {
     sendRequest(method, params) {
         const id = ++this.messageId;
         const message = {
-            jsonrpc: '2.0',
+            jsonrpc: "2.0",
             id,
             method,
-            params
+            params,
         };
         return new Promise((resolve, reject) => {
             const timeout = setTimeout(() => {
@@ -145,44 +154,46 @@ class LSPClient {
     }
     sendMessage(message) {
         if (!this.process?.stdin) {
-            throw new Error('LSP process not started');
+            throw new Error("LSP process not started");
         }
-        (0, logger_1.log)('trace', 'LSP sending', { message });
+        (0, logger_1.log)("trace", "LSP sending", { message });
         const content = JSON.stringify(message);
         const header = `Content-Length: ${Buffer.byteLength(content)}\r\n\r\n`;
         this.process.stdin.write(header + content);
     }
     async initialize() {
-        await this.sendRequest('initialize', {
+        await this.sendRequest("initialize", {
             processId: process.pid,
             rootUri: `file://${this.workspaceRoot}`,
             rootPath: this.workspaceRoot,
-            workspaceFolders: [{
+            workspaceFolders: [
+                {
                     uri: `file://${this.workspaceRoot}`,
-                    name: 'workspace'
-                }],
+                    name: "workspace",
+                },
+            ],
             capabilities: {
                 workspace: {
                     workspaceFolders: true,
-                    configuration: true
+                    configuration: true,
                 },
                 textDocument: {
                     synchronization: {
                         openClose: true,
-                        change: 1
+                        change: 1,
                     },
                     publishDiagnostics: {
                         relatedInformation: true,
                         versionSupport: false,
                         tagSupport: {
-                            valueSet: [1, 2]
-                        }
+                            valueSet: [1, 2],
+                        },
                     },
                     diagnostic: {
                         dynamicRegistration: false,
-                        relatedDocumentSupport: false
-                    }
-                }
+                        relatedDocumentSupport: false,
+                    },
+                },
             },
             initializationOptions: {
                 preferences: {
@@ -192,19 +203,19 @@ class LSPClient {
                     includeInlayVariableTypeHints: true,
                     includeInlayPropertyDeclarationTypeHints: true,
                     includeInlayFunctionLikeReturnTypeHints: true,
-                    includeInlayEnumMemberValueHints: true
-                }
-            }
+                    includeInlayEnumMemberValueHints: true,
+                },
+            },
         });
-        this.sendMessage({ jsonrpc: '2.0', method: 'initialized', params: {} });
+        this.sendMessage({ jsonrpc: "2.0", method: "initialized", params: {} });
     }
     async shutdown() {
         if (this.process) {
             try {
-                await this.sendRequest('shutdown');
-                this.sendMessage({ jsonrpc: '2.0', method: 'exit' });
+                await this.sendRequest("shutdown");
+                this.sendMessage({ jsonrpc: "2.0", method: "exit" });
                 // Give the process a moment to exit gracefully
-                await new Promise(resolve => setTimeout(resolve, 100));
+                await new Promise((resolve) => setTimeout(resolve, 100));
                 if (this.process && !this.process.killed) {
                     this.process.kill();
                 }
@@ -222,21 +233,21 @@ class LSPClient {
     async getDiagnostics(uri) {
         // First try the pull-based diagnostic request
         try {
-            const result = await this.sendRequest('textDocument/diagnostic', {
-                textDocument: { uri }
+            const result = await this.sendRequest("textDocument/diagnostic", {
+                textDocument: { uri },
             });
             return result;
         }
         catch (error) {
-            (0, logger_1.log)('info', 'Pull-based diagnostics failed, falling back to push-based');
+            (0, logger_1.log)("info", "Pull-based diagnostics failed, falling back to push-based");
             // Fall back to push-based diagnostics
             return { diagnostics: this.getDiagnosticsForUri(uri) };
         }
     }
     async getDefinition(uri, line, character) {
-        return this.sendRequest('textDocument/definition', {
+        return this.sendRequest("textDocument/definition", {
             textDocument: { uri },
-            position: { line, character }
+            position: { line, character },
         });
     }
 }

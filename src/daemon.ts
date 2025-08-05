@@ -200,8 +200,15 @@ class Daemon {
         const flags = JSON.parse(args[0] || "{}");
         return await lsp.inspectChanged(flags);
       }
-      default:
-        throw new Error(`Unknown action: ${action}`);
+      case "edit:plan": {
+        const raw = args[0] || "{}";
+        return await lsp.planWorkspaceEdit(raw);
+      }
+      case "edit:apply": {
+        const raw = args[0] || "{}";
+        return await lsp.applyWorkspaceEditJson(raw);
+      }
+      default:        throw new Error(`Unknown action: ${action}`);
     }
   }
 }

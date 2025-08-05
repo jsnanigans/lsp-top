@@ -43,25 +43,25 @@ class TypeScriptLSP {
         this.workspaceRoot = workspaceRoot;
         this.openDocuments = new Set();
         const vtsls = this.findVtsls();
-        (0, logger_1.log)('info', 'Using vtsls', { path: vtsls });
-        this.client = new lsp_client_1.LSPClient(vtsls, ['--stdio'], workspaceRoot);
+        (0, logger_1.log)("info", "Using vtsls", { path: vtsls });
+        this.client = new lsp_client_1.LSPClient(vtsls, ["--stdio"], workspaceRoot);
     }
     findVtsls() {
         const possiblePaths = [
-            path.join(this.workspaceRoot, 'node_modules/.bin/vtsls'),
-            path.join(process.cwd(), 'node_modules/.bin/vtsls'),
-            'vtsls' // Try global/PATH installation
+            path.join(this.workspaceRoot, "node_modules/.bin/vtsls"),
+            path.join(process.cwd(), "node_modules/.bin/vtsls"),
+            "vtsls", // Try global/PATH installation
         ];
         for (const vtsPath of possiblePaths) {
-            (0, logger_1.log)('debug', 'Checking for vtsls', { path: vtsPath });
-            if (vtsPath === 'vtsls' || fs.existsSync(vtsPath)) {
+            (0, logger_1.log)("debug", "Checking for vtsls", { path: vtsPath });
+            if (vtsPath === "vtsls" || fs.existsSync(vtsPath)) {
                 return vtsPath;
             }
         }
-        throw new Error('vtsls language server not found. Make sure @vtsls/language-server is installed.');
+        throw new Error("vtsls language server not found. Make sure @vtsls/language-server is installed.");
     }
     async start() {
-        await (0, logger_1.time)('typescript.start', async () => {
+        await (0, logger_1.time)("typescript.start", async () => {
             await this.client.start();
             await this.client.initialize();
         });
@@ -71,72 +71,77 @@ class TypeScriptLSP {
     }
     async getDiagnostics(filePath) {
         const uri = `file://${filePath}`;
-        const content = fs.readFileSync(filePath, 'utf-8');
+        const content = fs.readFileSync(filePath, "utf-8");
         if (this.openDocuments.has(uri)) {
             // Document is already open, send a change notification to trigger re-analysis
-            (0, logger_1.log)('trace', 'Document change', { uri });
+            (0, logger_1.log)("trace", "Document change", { uri });
             this.client.sendMessage({
-                jsonrpc: '2.0',
-                method: 'textDocument/didChange',
+                jsonrpc: "2.0",
+                method: "textDocument/didChange",
                 params: {
                     textDocument: {
                         uri,
-                        version: Date.now() // Use timestamp as version
+                        version: Date.now(), // Use timestamp as version
                     },
-                    contentChanges: [{
-                            text: content
-                        }]
-                }
+                    contentChanges: [
+                        {
+                            text: content,
+                        },
+                    ],
+                },
             });
         }
         else {
             // First time opening this document
-            (0, logger_1.log)('trace', 'Opening document', { uri });
+            (0, logger_1.log)("trace", "Opening document", { uri });
             this.client.sendMessage({
-                jsonrpc: '2.0',
-                method: 'textDocument/didOpen',
+                jsonrpc: "2.0",
+                method: "textDocument/didOpen",
                 params: {
                     textDocument: {
                         uri,
-                        languageId: 'typescript',
+                        languageId: "typescript",
                         version: 1,
-                        text: content
-                    }
-                }
+                        text: content,
+                    },
+                },
             });
             this.openDocuments.add(uri);
         }
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return await (0, logger_1.time)('typescript.diagnostics', async () => this.client.getDiagnostics(uri));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        return await (0, logger_1.time)("typescript.diagnostics", async () => this.client.getDiagnostics(uri));
     }
     async getDefinition(filePath, line, character) {
         const uri = `file://${filePath}`;
-        const content = fs.readFileSync(filePath, 'utf-8');
+        const content = fs.readFileSync(filePath, "utf-8");
         if (!this.openDocuments.has(uri)) {
             this.client.sendMessage({
-                jsonrpc: '2.0',
-                method: 'textDocument/didOpen',
+                jsonrpc: "2.0",
+                method: "textDocument/didOpen",
                 params: {
                     textDocument: {
                         uri,
-                        languageId: 'typescript',
+                        languageId: "typescript",
                         version: 1,
-                        text: content
-                    }
-                }
+                        text: content,
+                    },
+                },
             });
             this.openDocuments.add(uri);
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise((resolve) => setTimeout(resolve, 500));
         }
-        return await (0, logger_1.time)('typescript.definition', async () => this.client.getDefinition(uri, line - 1, character - 1));
+        return await (0, logger_1.time)("typescript.definition", async () => this.client.getDefinition(uri, line - 1, character - 1));
     }
     async codeActions(uri, diagnostics) {
-        const range = { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } };
+        const range = {
+            start: { line: 0, character: 0 },
+            end: { line: 0, character: 0 },
+        };
         try {
-            const actions = await this.client.sendRequest('textDocument/codeAction', {
+            const actions = await this.client.sendRequest("textDocument/codeAction", {
                 textDocument: { uri },
                 range,
-                context: { diagnostics }
+                context: { diagnostics },
             });
             return Array.isArray(actions) ? actions : [];
         }
@@ -146,9 +151,9 @@ class TypeScriptLSP {
     }
     async format(uri) {
         try {
-            const edits = await this.client.sendRequest('textDocument/formatting', {
+            const edits = await this.client.sendRequest("textDocument/formatting", {
                 textDocument: { uri },
-                options: { tabSize: 2, insertSpaces: true }
+                options: { tabSize: 2, insertSpaces: true },
             });
             return Array.isArray(edits) ? edits : [];
         }
@@ -157,9 +162,9 @@ class TypeScriptLSP {
         }
     }
     async organizeImports(uri) {
-        const action = await this.client.sendRequest('workspace/executeCommand', {
-            command: '_typescript.organizeImports',
-            arguments: [{ scope: { type: 'file', args: { uri } } }]
+        const action = await this.client.sendRequest("workspace/executeCommand", {
+            command: "_typescript.organizeImports",
+            arguments: [{ scope: { type: "file", args: { uri } } }],
         });
         return Array.isArray(action) ? action : [];
     }
@@ -200,6 +205,33 @@ class TypeScriptLSP {
         const res = { diagnostics, edits };
         return res;
     }
+    async planWorkspaceEdit(raw) {
+        const edit = JSON.parse(raw);
+        return this.normalizeWorkspaceEdit(edit);
+    }
+    async applyWorkspaceEditJson(raw) {
+        const edit = JSON.parse(raw);
+        const planned = this.normalizeWorkspaceEdit(edit);
+        await this.applyWorkspaceEdit(planned);
+        return { ok: true };
+    }
+    normalizeWorkspaceEdit(edit) {
+        const out = { changes: {} };
+        if (edit.documentChanges && Array.isArray(edit.documentChanges)) {
+            out.documentChanges = [];
+            for (const dc of edit.documentChanges) {
+                if (dc && dc.textDocument && Array.isArray(dc.edits)) {
+                    out.documentChanges.push({ textDocument: { uri: dc.textDocument.uri }, edits: dc.edits });
+                }
+            }
+        }
+        if (edit.changes) {
+            for (const [uri, edits] of Object.entries(edit.changes)) {
+                out.changes[uri] = edits;
+            }
+        }
+        return out;
+    }
     async applyWorkspaceEdit(edit) {
         if (edit.documentChanges && Array.isArray(edit.documentChanges)) {
             for (const dc of edit.documentChanges) {
@@ -215,9 +247,9 @@ class TypeScriptLSP {
         }
     }
     async applyEditsToUri(uri, edits) {
-        const filePath = uri.replace(/^file:\/\//, '');
-        const content = fs.readFileSync(filePath, 'utf-8');
-        const lines = content.split('\n');
+        const filePath = uri.replace(/^file:\/\//, "");
+        const content = fs.readFileSync(filePath, "utf-8");
+        const lines = content.split("\n");
         const sorted = [...edits].sort((a, b) => {
             const sa = a.range.start;
             const sb = b.range.start;
@@ -229,11 +261,18 @@ class TypeScriptLSP {
         for (const e of sorted) {
             const start = this.offsetOf(lines, e.range.start.line, e.range.start.character);
             const end = this.offsetOf(lines, e.range.end.line, e.range.end.character);
-            text = text.slice(0, start) + (e.newText || '') + text.slice(end);
+            text = text.slice(0, start) + (e.newText || "") + text.slice(end);
         }
-        fs.writeFileSync(filePath, text, 'utf-8');
+        fs.writeFileSync(filePath, text, "utf-8");
         if (this.openDocuments.has(uri)) {
-            this.client.sendMessage({ jsonrpc: '2.0', method: 'textDocument/didChange', params: { textDocument: { uri, version: Date.now() }, contentChanges: [{ text }] } });
+            this.client.sendMessage({
+                jsonrpc: "2.0",
+                method: "textDocument/didChange",
+                params: {
+                    textDocument: { uri, version: Date.now() },
+                    contentChanges: [{ text }],
+                },
+            });
         }
     }
     offsetOf(lines, line, ch) {
@@ -243,10 +282,12 @@ class TypeScriptLSP {
         return off + ch;
     }
     async inspectChanged(flags = {}) {
-        const { gitChangedFiles } = await Promise.resolve().then(() => __importStar(require('../path-utils')));
-        const files = await gitChangedFiles(this.workspaceRoot, { staged: !!flags.staged });
+        const { gitChangedFiles } = await Promise.resolve().then(() => __importStar(require("../path-utils")));
+        const files = await gitChangedFiles(this.workspaceRoot, {
+            staged: !!flags.staged,
+        });
         const out = {};
-        for (const f of files.filter((p) => p.endsWith('.ts') || p.endsWith('.tsx'))) {
+        for (const f of files.filter((p) => p.endsWith(".ts") || p.endsWith(".tsx"))) {
             out[f] = await this.inspectFile(f, flags);
         }
         return out;

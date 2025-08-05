@@ -39,30 +39,30 @@ const path = __importStar(require("path"));
 const os = __importStar(require("os"));
 class ConfigManager {
     constructor() {
-        this.configPath = path.join(os.homedir(), '.lsp-top', 'aliases.json');
+        this.configPath = path.join(os.homedir(), ".lsp-top", "aliases.json");
         this.config = this.loadConfig();
     }
     validateConfigShape(obj) {
-        if (obj === null || typeof obj !== 'object' || Array.isArray(obj)) {
-            throw new Error('Invalid config: expected object mapping alias to path');
+        if (obj === null || typeof obj !== "object" || Array.isArray(obj)) {
+            throw new Error("Invalid config: expected object mapping alias to path");
         }
         for (const [k, v] of Object.entries(obj)) {
-            if (typeof k !== 'string' || typeof v !== 'string') {
-                throw new Error('Invalid config: aliases must map to string paths');
+            if (typeof k !== "string" || typeof v !== "string") {
+                throw new Error("Invalid config: aliases must map to string paths");
             }
         }
     }
     loadConfig() {
         try {
             if (fs.existsSync(this.configPath)) {
-                const data = fs.readFileSync(this.configPath, 'utf-8');
+                const data = fs.readFileSync(this.configPath, "utf-8");
                 const parsed = JSON.parse(data);
                 this.validateConfigShape(parsed);
                 return parsed;
             }
         }
         catch (error) {
-            console.error('Error loading config:', error);
+            console.error("Error loading config:", error);
         }
         return {};
     }

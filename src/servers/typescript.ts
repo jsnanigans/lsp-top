@@ -3,6 +3,10 @@ import * as path from "path";
 import * as fs from "fs";
 import { log, time, metrics } from "../logger";
 
+type WorkspaceTextEdit = { range: { start: { line: number; character: number }; end: { line: number; character: number } }; newText: string };
+
+type WorkspaceEdit = { documentChanges?: { textDocument: { uri: string }; edits: WorkspaceTextEdit[] }[]; changes?: Record<string, WorkspaceTextEdit[]> };
+
 export class TypeScriptLSP {
   private client: LSPClient;
   private openDocuments = new Set<string>();
@@ -211,7 +215,37 @@ export class TypeScriptLSP {
     return res;
   }
 
-  private async applyWorkspaceEdit(edit: {
+  async planWorkspaceEdit(raw: string) {
+    const edit = JSON.parse(raw) as WorkspaceEdit;
+    return this.normalizeWorkspaceEdit(edit);
+  }
+
+  async applyWorkspaceEditJson(raw: string) {
+    const edit = JSON.parse(raw) as WorkspaceEdit;
+    const planned = this.normalizeWorkspaceEdit(edit);
+    await this.applyWorkspaceEdit(planned);
+    return { ok: true };
+  }
+
+  private normalizeWorkspaceEdit(edit: WorkspaceEdit): WorkspaceEdit {
+    const out: WorkspaceEdit = { changes: {} };
+    if (edit.documentChanges && Array.isArray(edit.documentChanges)) {
+      out.documentChanges = [];
+      for (const dc of edit.documentChanges) {
+        if (dc && dc.textDocument && Array.isArray(dc.edits)) {
+          out.documentChanges.push({ textDocument: { uri: dc.textDocument.uri }, edits: dc.edits });
+        }
+      }
+    }
+    if (edit.changes) {
+      for (const [uri, edits] of Object.entries(edit.changes)) {
+        out.changes![uri] = edits;
+      }
+    }
+    return out;
+  }
+
+  private async applyWorkspaceEdit(edit: WorkspaceEdit) {
     documentChanges?: any[];
     changes?: Record<string, any[]>;
   }) {

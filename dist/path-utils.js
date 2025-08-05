@@ -47,16 +47,25 @@ function makeRelativeToProject(projectRoot, absolutePath) {
     return path.relative(projectRoot, absolutePath);
 }
 async function gitChangedFiles(projectRoot, opts = {}) {
-    const { spawn } = await Promise.resolve().then(() => __importStar(require('child_process')));
-    const args = ['git', 'diff', '--name-only'];
+    const { spawn } = await Promise.resolve().then(() => __importStar(require("child_process")));
+    const args = ["git", "diff", "--name-only"];
     if (opts.staged)
-        args.push('--cached');
+        args.push("--cached");
     return await new Promise((resolve) => {
-        const proc = spawn(args[0], args.slice(1), { cwd: projectRoot, stdio: ['ignore', 'pipe', 'ignore'] });
-        let out = '';
-        proc.stdout?.on('data', (d) => { out += String(d); });
-        proc.on('close', () => {
-            resolve(out.split('\n').map((s) => s.trim()).filter(Boolean).map((p) => path.join(projectRoot, p)));
+        const proc = spawn(args[0], args.slice(1), {
+            cwd: projectRoot,
+            stdio: ["ignore", "pipe", "ignore"],
+        });
+        let out = "";
+        proc.stdout?.on("data", (d) => {
+            out += String(d);
+        });
+        proc.on("close", () => {
+            resolve(out
+                .split("\n")
+                .map((s) => s.trim())
+                .filter(Boolean)
+                .map((p) => path.join(projectRoot, p)));
         });
     });
 }

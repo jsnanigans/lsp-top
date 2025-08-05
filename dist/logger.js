@@ -41,21 +41,21 @@ exports.clearLogFile = clearLogFile;
 exports.time = time;
 const fs = __importStar(require("fs"));
 const events_1 = require("events");
-const LOG_FILE = '/tmp/lsp-top.log';
+const LOG_FILE = "/tmp/lsp-top.log";
 exports.LOG_FILE = LOG_FILE;
 const MAX_SIZE_BYTES = 1024 * 1024;
 const loggerEmitter = new events_1.EventEmitter();
 exports.loggerEmitter = loggerEmitter;
-let level = 'info';
+let level = "info";
 let traceFlags = new Set();
-loggerEmitter.on('log', (message) => {
-    fs.appendFileSync(LOG_FILE, message + '\n');
+loggerEmitter.on("log", (message) => {
+    fs.appendFileSync(LOG_FILE, message + "\n");
 });
 function rotateIfNeeded() {
     try {
         const stat = fs.existsSync(LOG_FILE) ? fs.statSync(LOG_FILE) : null;
         if (stat && stat.size > MAX_SIZE_BYTES) {
-            const backup = LOG_FILE + '.1';
+            const backup = LOG_FILE + ".1";
             try {
                 fs.unlinkSync(backup);
             }
@@ -65,28 +65,38 @@ function rotateIfNeeded() {
     }
     catch { }
 }
-function setLogLevel(l) { level = l; }
-function setTraceFlags(flags) { traceFlags = new Set(flags); }
+function setLogLevel(l) {
+    level = l;
+}
+function setTraceFlags(flags) {
+    traceFlags = new Set(flags);
+}
 function shouldLog(l, flag) {
-    const order = { error: 0, warn: 1, info: 2, debug: 3, trace: 4 };
+    const order = {
+        error: 0,
+        warn: 1,
+        info: 2,
+        debug: 3,
+        trace: 4,
+    };
     if (flag && !traceFlags.has(flag))
         return false;
     return order[l] <= order[level];
 }
 function log(l, message, meta) {
-    if (!shouldLog(l, meta && typeof meta.flag === 'string' ? String(meta.flag) : undefined))
+    if (!shouldLog(l, meta && typeof meta.flag === "string" ? String(meta.flag) : undefined))
         return;
     const entry = {
         ts: new Date().toISOString(),
         level: l,
         msg: message,
-        ...(meta || {})
+        ...(meta || {}),
     };
     rotateIfNeeded();
-    loggerEmitter.emit('log', JSON.stringify(entry));
+    loggerEmitter.emit("log", JSON.stringify(entry));
 }
 function clearLogFile() {
-    fs.writeFileSync(LOG_FILE, '');
+    fs.writeFileSync(LOG_FILE, "");
 }
 class Metrics {
     constructor() {
@@ -110,7 +120,12 @@ class Metrics {
             const sorted = [...arr].sort((a, b) => a - b);
             const n = sorted.length;
             const pct = (p) => sorted[Math.min(n - 1, Math.floor(p * (n - 1)))];
-            durations[k] = { count: n, p50: pct(0.5) || 0, p95: pct(0.95) || 0, max: sorted[n - 1] || 0 };
+            durations[k] = {
+                count: n,
+                p50: pct(0.5) || 0,
+                p95: pct(0.95) || 0,
+                max: sorted[n - 1] || 0,
+            };
         }
         return { counters, durations };
     }
