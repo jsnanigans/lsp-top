@@ -96,7 +96,7 @@ program
             const info = JSON.parse(data.toString());
             if (info && info.ok) {
                 if (program.opts().json) {
-                    (0, errors_1.printJsonAndExit)(info);
+                    (0, errors_1.printJsonAndExit)((0, errors_1.result)({ ok: true, data: info }));
                 }
                 else {
                     (0, errors_1.printTextAndExit)(`Daemon: running, sessions=${info.sessions}`);
@@ -105,7 +105,7 @@ program
             else {
                 const msg = (info && info.error) || 'Unknown error';
                 if (program.opts().json)
-                    (0, errors_1.printJsonAndExit)({ ok: false, error: msg, code: 'STATUS_ERROR' }, 'STATUS_ERROR');
+                    (0, errors_1.printJsonAndExit)((0, errors_1.result)({ ok: false, error: msg, code: 'STATUS_ERROR' }), 'STATUS_ERROR');
                 else
                     (0, errors_1.printTextAndExit)(`Error: ${msg}`, true, 'STATUS_ERROR');
             }
@@ -117,7 +117,7 @@ program
     client.on('error', () => {
         const msg = 'Daemon not running';
         if (program.opts().json)
-            (0, errors_1.printJsonAndExit)({ ok: false, error: msg, code: 'DAEMON_NOT_RUNNING' }, 'DAEMON_NOT_RUNNING');
+            (0, errors_1.printJsonAndExit)((0, errors_1.result)({ ok: false, error: msg, code: 'DAEMON_NOT_RUNNING' }), 'DAEMON_NOT_RUNNING');
         else
             (0, errors_1.printTextAndExit)(msg, true, 'DAEMON_NOT_RUNNING');
     });
@@ -241,12 +241,12 @@ program
             if (!options.json)
                 (0, errors_1.printTextAndExit)(`✓ Set ${alias} -> ${p}`);
             else
-                (0, errors_1.printJsonAndExit)({ ok: true });
+                (0, errors_1.printJsonAndExit)((0, errors_1.result)({ ok: true }));
         }
         catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             if (options.json)
-                (0, errors_1.printJsonAndExit)({ ok: false, error: msg, code: 'CONFIG_SET_ERROR' }, 'CONFIG_SET_ERROR');
+                (0, errors_1.printJsonAndExit)((0, errors_1.result)({ ok: false, error: msg, code: 'CONFIG_SET_ERROR' }), 'CONFIG_SET_ERROR');
             else
                 (0, errors_1.printTextAndExit)(`Error: ${msg}`, true, 'CONFIG_SET_ERROR');
         }
@@ -329,7 +329,7 @@ program
     if (!projectPath) {
         const msg = `Project '${alias}' not found. Use 'lsp-top list' to see available projects.`;
         if (options.json) {
-            (0, errors_1.printJsonAndExit)({ ok: false, error: msg, code: 'ALIAS_NOT_FOUND' }, 'ALIAS_NOT_FOUND');
+            (0, errors_1.printJsonAndExit)((0, errors_1.result)({ ok: false, error: msg, code: 'ALIAS_NOT_FOUND' }), 'ALIAS_NOT_FOUND');
         }
         else {
             (0, errors_1.printTextAndExit)(`Error: ${msg}`, true, 'ALIAS_NOT_FOUND');
@@ -362,7 +362,7 @@ program
                     }
                     else if (response.type === 'result') {
                         if (options.json) {
-                            (0, errors_1.printJsonAndExit)({ ok: true, data: response.data });
+                            (0, errors_1.printJsonAndExit)((0, errors_1.result)({ ok: true, data: response.data }));
                         }
                         else {
                             (0, errors_1.printTextAndExit)(JSON.stringify(response.data, null, 2));
@@ -370,7 +370,7 @@ program
                     }
                     else if (response.type === 'error') {
                         if (options.json) {
-                            (0, errors_1.printJsonAndExit)({ ok: false, error: response.message, code: response.code || 'DAEMON_UNAVAILABLE' }, 'DAEMON_UNAVAILABLE');
+                            (0, errors_1.printJsonAndExit)((0, errors_1.result)({ ok: false, error: response.message, code: response.code || 'DAEMON_UNAVAILABLE' }), 'DAEMON_UNAVAILABLE');
                         }
                         else {
                             (0, errors_1.printTextAndExit)(`Error: ${response.message}`, true, 'DAEMON_UNAVAILABLE');
@@ -387,7 +387,7 @@ program
     client.on('error', (err) => {
         const msg = 'Failed to connect to daemon. Is it running?';
         if (options.json) {
-            (0, errors_1.printJsonAndExit)({ ok: false, error: msg, code: 'DAEMON_UNAVAILABLE' }, 'DAEMON_UNAVAILABLE');
+            (0, errors_1.printJsonAndExit)((0, errors_1.result)({ ok: false, error: msg, code: 'DAEMON_UNAVAILABLE' }), 'DAEMON_UNAVAILABLE');
         }
         else {
             (0, errors_1.printTextAndExit)(msg, true, 'DAEMON_UNAVAILABLE');
