@@ -1,4 +1,5 @@
 # LSP-Top Implementation Plan (v1)
+based on the design document and RFC ./DESIGN.md
 
 ## Phase 1: Baseline and Schemas
 - Add `schemaVersion` to all JSON envelopes; define shared types in `src/errors.ts` and result envelopes in `src/*`.

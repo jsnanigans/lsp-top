@@ -258,6 +258,69 @@ program
   });
 
 program
+  .command('inspect <alias> <mode> [path]')
+  .description('Inspect files for diagnostics and candidate edits')
+  .option('--fix', 'Apply quick fixes (preview)')
+  .option('--fix-dry', 'Plan fixes without applying')
+  .option('--organize-imports', 'Organize imports')
+  .option('--format', 'Format files')
+  .option('--write', 'Apply edits to disk')
+  .option('--staged', 'Limit to staged changes for changed mode')
+  .option('--json', 'Output machine-readable JSON only')
+  .action(async (alias: string, mode: string, filePath: string | undefined, options) => {
+    if (mode === 'file' && !filePath) {
+      printTextAndExit('Error: path required for inspect file', true, 'BAD_FLAG');
+    }
+    const level = (options.logLevel ? String(options.logLevel) : (options.verbose ? 'debug' : 'info')) as Level;
+    setLogLevel(level);
+    if (options.trace) setTraceFlags(String(options.trace).split(',').map((s) => s.trim()).filter(Boolean));
+    const projectPath = config.getPath(alias);
+    if (!projectPath) {
+      const msg = `Project '${alias}' not found. Use 'lsp-top list' to see available projects.`;
+      if (options.json) {
+        printJsonAndExit(result({ ok: false, error: msg, code: 'ALIAS_NOT_FOUND' }), 'ALIAS_NOT_FOUND');
+      } else {
+        printTextAndExit(`Error: ${msg}`, true, 'ALIAS_NOT_FOUND');
+      }
+    }
+    const client = net.connect(SOCKET_PATH, () => {
+      const flags = JSON.stringify({ fix: !!options.fix, fixDry: !!options.fixDry, organizeImports: !!options.organizeImports, format: !!options.format, write: !!options.write, staged: !!options.staged });
+      const action = mode === 'file' ? 'inspect:file' : 'inspect:changed';
+      const args = mode === 'file' ? [String(filePath || '') , flags] : [flags];
+      client.write(JSON.stringify({ alias, action, args, projectPath, verbose: options.verbose, logLevel: level, trace: options.trace || '' }));
+    });
+
+    let buffer = '';
+    client.on('data', (data) => {
+      buffer += data.toString();
+      let boundary = buffer.indexOf('\n');
+      while (boundary !== -1) {
+        const chunk = buffer.substring(0, boundary);
+        buffer = buffer.substring(boundary + 1);
+        if (chunk) {
+          try {
+            const response = JSON.parse(chunk);
+            if (response.type === 'result') {
+              if (options.json) printJsonAndExit(result({ ok: true, data: response.data }));
+              else printTextAndExit(JSON.stringify(response.data, null, 2));
+            } else if (response.type === 'error') {
+              if (options.json) printJsonAndExit(result({ ok: false, error: response.message, code: response.code || 'DAEMON_UNAVAILABLE' }), 'DAEMON_UNAVAILABLE');
+              else printTextAndExit(`Error: ${response.message}`, true, 'DAEMON_UNAVAILABLE');
+            }
+          } catch {}
+        }
+        boundary = buffer.indexOf('\n');
+      }
+    });
+
+    client.on('error', () => {
+      const msg = 'Failed to connect to daemon. Is it running?';
+      if (options.json) printJsonAndExit(result({ ok: false, error: msg, code: 'DAEMON_UNAVAILABLE' }), 'DAEMON_UNAVAILABLE');
+      else printTextAndExit(msg, true, 'DAEMON_UNAVAILABLE');
+    });
+  });
+
+program
   .command('run <alias> <action> [args...]')
   .description('Run an LSP action for a project')
   .option('-v, --verbose', 'Enable verbose logging')

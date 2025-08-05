@@ -156,6 +156,16 @@ class Daemon {
         }
         return await lsp.getDefinition(filePath, line, char);
       }
+      case 'inspect:file': {
+        if (!args[0]) throw new Error('File path required');
+        const filePath = resolveProjectPath(projectPath, args[0]);
+        const flags = JSON.parse(args[1] || '{}');
+        return await lsp.inspectFile(filePath, flags);
+      }
+      case 'inspect:changed': {
+        const flags = JSON.parse(args[0] || '{}');
+        return await lsp.inspectChanged(flags);
+      }
       default:
         throw new Error(`Unknown action: ${action}`);
     }
