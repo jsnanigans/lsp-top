@@ -1,14 +1,20 @@
 # LSP-Top
 
-A fast CLI for running Language Server actions from anywhere. It manages a lightweight daemon and per-project aliases so you can query LSP features (Diagnostics, Go to Definition, more soon) without switching directories.
+A powerful command-line IDE that brings Language Server Protocol features to your terminal. Navigate, understand, and refactor TypeScript codebases without ever opening a traditional editor.
 
-## Highlights
+## Why LSP-Top?
 
-- Project aliases: `web -> ~/code/webapp`
-- Smart path resolution relative to project root
-- LSP-backed actions (TypeScript via @vtsls/language-server)
-- Daemonized for speed: background server multiplexes requests
-- JSON output mode for scripting
+Imagine working purely from the command line - SSH'd into a remote server, using only terminal tools, or building AI agents that need to understand code. LSP-Top gives you IDE-level code intelligence through simple, composable commands.
+
+## Key Features
+
+- **🔍 Smart Navigation**: Jump to definitions, find references, explore implementations
+- **📖 Code Understanding**: Get hover information, signatures, and documentation
+- **🔧 Safe Refactoring**: Rename symbols, extract functions, organize imports
+- **📊 Code Analysis**: Find issues, unused code, and complexity metrics
+- **🤖 AI-Friendly**: Structured JSON output for automation
+- **⚡ Fast**: Persistent daemon with intelligent caching (<100ms responses)
+- **🎯 Context-Aware**: Shows surrounding code, not just line numbers
 
 ## Installation
 
@@ -18,141 +24,255 @@ pnpm run build
 npm link
 ```
 
-Requirements: Node.js 18+. For TypeScript projects install @vtsls/language-server in the project you target:
-```bash
-pnpm add -D @vtsls/language-server
-```
+Requirements: 
+- Node.js 18+
+- TypeScript projects need `@vtsls/language-server`:
+  ```bash
+  pnpm add -D @vtsls/language-server
+  ```
 
 ## Quick Start
 
 ```bash
-# 1) Alias a project
-lsp-top init web ~/projects/webapp
+# 1) Initialize a project
+lsp-top init myapp ~/projects/myapp
 
-# 2) Start the daemon (recommended)
+# 2) Start the daemon
 lsp-top start-server
 
-# 3) Run actions from anywhere
-lsp-top run web diagnostics src/index.ts
-lsp-top run web definition src/index.ts:10:5
+# 3) Navigate code
+lsp-top run myapp definition src/index.ts:10:5
+
+# 4) Check for issues
+lsp-top inspect myapp file src/service.ts --fix
+
+# 5) Understand code (coming in v1.0)
+lsp-top explore hover src/api.ts:30:15
+
+# 6) Refactor safely (coming in v1.0)
+lsp-top refactor rename src/old.ts:10:5 "newName" --preview
 ```
 
-## CLI Usage
+## Command Reference
 
-Global options:
-- -v, --verbose
-- -q, --quiet
-- --json
-- --log-level <error|warn|info|debug|trace>
-- --trace <flags>
+### Global Options
+- `-v, --verbose` - Enable verbose logging
+- `-q, --quiet` - Suppress non-error output
+- `--json` - Output machine-readable JSON
+- `--log-level <level>` - Set log level (error|warn|info|debug|trace)
+- `--trace <flags>` - Enable trace flags for debugging
 
-### Project management
-
-Init a project alias
+### Project Management
 ```bash
-lsp-top init <alias> [path]
+lsp-top init <alias> [path]          # Initialize project with alias
+lsp-top list                         # List all projects
+lsp-top remove <alias>               # Remove project alias
+lsp-top configure --set-alias <alias:path>  # Set alias
+lsp-top configure --print            # Show configuration
 ```
-- alias: name for the project
-- path: absolute or relative; defaults to current directory
 
-List aliases
+### Code Inspection
 ```bash
-lsp-top list
+# Check single file
+lsp-top inspect <alias> file <path> [options]
+  --fix                    # Apply available fixes
+  --fix-dry               # Preview fixes without applying
+  --organize-imports      # Organize import statements
+  --format                # Format code
+  --write                 # Write changes to disk
+
+# Check changed files (git)
+lsp-top inspect <alias> changed [options]
+  --staged                # Only staged files
+  --fix                   # Apply fixes to all files
+
+# Examples
+lsp-top inspect myapp file src/service.ts --fix --write
+lsp-top inspect myapp changed --staged --fix
 ```
 
-Remove an alias
+### Code Navigation (Current)
 ```bash
-lsp-top remove <alias>
+lsp-top run <alias> definition <file:line:col>
+lsp-top run <alias> diagnostics <file>
+
+# Examples
+lsp-top run myapp definition src/api.ts:30:15
+lsp-top run myapp diagnostics src/service.ts
 ```
 
-Configure and inspect
+### Code Editing
 ```bash
-lsp-top configure --set-alias <alias:path>
-lsp-top configure --print [--env NODE_ENV,HOME] [--json]
+lsp-top edit <alias> apply <file>    # Apply WorkspaceEdit JSON
+lsp-top edit <alias> plan <file>     # Create edit plan
 ```
 
-### Daemon control and status
-
-Start daemon
+### Daemon Management
 ```bash
-lsp-top start-server [--verbose] [--log-level <level>] [--trace <flags>]
+lsp-top start-server                 # Start background daemon
+lsp-top metrics [--json]             # Show daemon status
+lsp-top logs [--tail <n>] [--follow] # View daemon logs
 ```
 
-Show daemon metrics/status
+### Diagnostics
 ```bash
-lsp-top metrics [--json]
+lsp-top diagnose [alias]             # Check environment setup
 ```
 
-Follow daemon logs
+## Coming in v1.0
+
+### 🚀 Navigation Commands
 ```bash
-lsp-top logs [--tail <n>] [--follow]
+lsp-top navigate def src/api.ts:30:15         # Go to definition
+lsp-top navigate refs src/user.ts:10:5        # Find all references
+lsp-top navigate type src/api.ts:30:15        # Go to type definition
+lsp-top navigate impl src/interface.ts:5:10   # Find implementations
+lsp-top navigate symbol "UserService"         # Search symbols by name
 ```
 
-Stop daemon
+### 📚 Code Understanding
 ```bash
-lsp-top stop-server
+lsp-top explore hover src/api.ts:30:15        # Show type info & docs
+lsp-top explore signature src/call.ts:20:10   # Show function signature
+lsp-top explore symbols src/module.ts --tree  # Show file symbols
+lsp-top explore outline src/service.ts        # Document outline
 ```
 
-### LSP actions
-
-Run an action
+### 🔨 Refactoring
 ```bash
-lsp-top run <alias> <action> [args...] [--json] [-v|--log-level <lvl>] [--trace <flags>]
+lsp-top refactor rename src/old.ts:10:5 "newName" --preview
+lsp-top refactor extract-function src/long.ts:20-30 "helper"
+lsp-top refactor organize-imports src/messy.ts
 ```
 
-Actions (TypeScript via vtsls):
-- diagnostics <file>
-  - Returns TypeScript diagnostics for the file
-  - Example: `lsp-top run web diagnostics src/components/Button.tsx`
-- definition <file:line:column>
-  - Returns definition locations
-  - Example: `lsp-top run web definition src/utils.ts:45:12`
-
-Environment diagnosis
+### 🔍 Search & Analysis
 ```bash
-lsp-top diagnose [alias] [--json]
+lsp-top search text "TODO" --glob "**/*.ts"
+lsp-top search symbol "process" --kind function
+lsp-top analyze unused --type exports
+lsp-top analyze complexity src/complex.ts
 ```
-- Checks Node version, @vtsls/language-server availability, and an alias’s path
 
-## Output formats
+## Output Formats
 
-Text (default) prints human-friendly strings. JSON mode prints a single JSON object per invocation, suitable for scripting:
+### Human-Readable (Default)
+```
+┌─ src/service.ts:45:10 ─────────────────────────┐
+│ 43 │   async processUser(id: string) {         │
+│ 44 │     const user = await this.getUser(id);  │
+│ 45 │     return user.process();                 │
+│    │            ^^^^                           │
+│ 46 │   }                                       │
+└─────────────────────────────────────────────────┘
+  Type: (method) User.process(): Promise<Result>
+  Defined at: src/models/user.ts:23:5
+```
+
+### JSON Format (--json)
+```json
+{
+  "schemaVersion": "v1",
+  "ok": true,
+  "data": {
+    "location": {
+      "uri": "file:///project/src/models/user.ts",
+      "range": {
+        "start": { "line": 22, "character": 4 },
+        "end": { "line": 22, "character": 11 }
+      }
+    }
+  }
+}
+```
+
+## Use Cases
+
+### For Human Developers
 ```bash
-lsp-top run web diagnostics src/index.ts --json
+# Working over SSH
+ssh remote-server
+lsp-top navigate def src/api.ts:30:15
+lsp-top explore hover src/complex.ts:45:20
+
+# Quick code verification
+lsp-top analyze file src/new-feature.ts --fix
+lsp-top analyze changed --staged
+
+# Exploring unknown codebase
+lsp-top explore symbols src/core.ts --tree
+lsp-top navigate refs src/main.ts:bootstrap:10:5
 ```
 
-## Path resolution
+### For AI Agents
+```python
+# Analyze codebase
+result = run_command("lsp-top analyze file src/service.ts --json")
+diagnostics = json.loads(result)["data"]["diagnostics"]
 
-File arguments are resolved relative to the aliased project root. Absolute paths are supported and used as-is.
+# Navigate code relationships
+refs = run_command("lsp-top navigate refs src/api.ts:30:15 --json")
+locations = json.loads(refs)["data"]["locations"]
 
-## Configuration files
-
-Aliases are stored in `~/.lsp-top/aliases.json`.
-
-## Examples
-
-```bash
-lsp-top init api ~/work/backend-api
-lsp-top run api diagnostics src/controllers/user.ts
-lsp-top run api definition src/index.ts:12:3
+# Safe refactoring
+preview = run_command('lsp-top refactor rename src/old.ts:10:5 "new" --preview --json')
+if len(preview["data"]["changes"]) < 10:
+    run_command('lsp-top refactor rename src/old.ts:10:5 "new"')
 ```
+
+## Configuration
+
+- Project aliases stored in `~/.config/lsp-top/config.json`
+- Daemon socket at `/tmp/lsp-top.sock`
+- Logs at `/tmp/lsp-top.log`
 
 ## Development
 
 ```bash
-pnpm run dev -- <cmd>
-pnpm run dev -- init test .
-pnpm run dev -- run test diagnostics src/cli.ts
+# Run in development mode
+pnpm run dev -- <command>
+
+# Build
 pnpm run build
+
+# Run tests
+pnpm test
+
+# Type check
+pnpm run typecheck
 ```
+
+## Documentation
+
+See the [docs](./docs) directory for:
+- [Design Document](./docs/DESIGN.md) - Architecture and command structure
+- [Implementation Plan](./docs/IMPLEMENTATION_PLAN.md) - Development roadmap
+- [Command Reference](./docs/command-reference-v1.md) - Detailed command documentation
+- [Use Cases](./docs/use-cases.md) - Real-world examples
 
 ## Roadmap
 
-- More language servers (pyright, gopls, rust-analyzer)
-- Composite actions (symbol analysis, refactors)
-- Config file support
-- Richer errors and UX
-- Shell completion
+### v0.9.0 (Current)
+- ✅ Basic infrastructure (daemon, LSP client)
+- ✅ Project management
+- ✅ Code inspection (diagnostics, fixes)
+- ✅ Single navigation command (definition)
+
+### v1.0 (Target)
+- [ ] Complete navigation suite (refs, type, impl, symbols)
+- [ ] Code understanding tools (hover, signature, outline)
+- [ ] Refactoring commands (rename, extract)
+- [ ] Enhanced output formatting
+- [ ] Performance optimizations
+
+### Future
+- [ ] Multi-language support (Python, Rust, Go)
+- [ ] Advanced analysis (complexity, dependencies)
+- [ ] Plugin system
+- [ ] Collaborative features
+
+## Contributing
+
+We welcome contributions! Please see our [implementation plan](./docs/IMPLEMENTATION_PLAN.md) for current priorities.
 
 ## License
 
