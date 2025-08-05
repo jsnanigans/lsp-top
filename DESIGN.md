@@ -1,33 +1,34 @@
-# LSP-Top CLI Design
+# LSP-Top CLI Design v1
 
 Purpose: a compact, powerful CLI to navigate, debug, and edit TypeScript projects via LSP. It layers ergonomic commands over raw LSP methods, with JSON-first automation and human-friendly defaults.
 
 Guiding principles
-- Small surface: a handful of verbs cover 90% use
+- Minimal, orthogonal verbs; cover 90% of use without combinatorial flags
 - Consistent shapes: positions (file:line:col), ranges (A:B or L1:C1-L2:C2)
-- Idempotent reads; explicit writes: `--dry` required to preview edits; writing needs `--write` or lack of `--dry`
-- Scriptable: `--json` everywhere, stable schemas
-- Fast feedback: persistent daemon, batched LSP, low chatter
+- Idempotent reads; explicit writes: `--dry` previews, `--write` applies; reversible and safe by default
+- Scriptable: `--json` everywhere, versioned stable schemas with deprecation policy
+- Fast feedback: persistent daemon, batched LSP, low chatter; instrument latency and cache hit rates
 
 Top-level command groups
 - inspect, jump, search, info, refactor, edit, graph, daemon, project, config
 
 Global conventions
-- Options: -v, -q, --json, --log-level <level>, --trace <flags>
+- Options: -v, -q, --json, --log-level <level>, --trace <flags|preset>
 - Position: file.ts:line:col (1-based); Range: A:B or L1:C1-L2:C2
 - Output: text default; JSON via --json; exit codes 0 ok, 2 no-result, 1 error
 - Project context: via alias or cwd autodetect; file args resolve relative to alias root
+- JSON envelope version: include {schemaVersion} in outputs; stable across minor versions
 
 inspect
 - file <path> [--range A:B] [--fix|--fix-dry] [--organize-imports] [--format] [--json]
   - Runs diagnostics; if --fix/--fix-dry, queries quick-fixes and code actions, optionally applies; organize imports and format can be chained
-  - JSON schema: { ok, diagnostics: [...], fixes: [...], applied: boolean, edits?: WorkspaceEdit }
+  - JSON schema: { schemaVersion, ok, diagnostics: [...], fixes: [...], applied: boolean, edits?: WorkspaceEdit }
 - changed [--staged|--since <rev>] [--fix|--fix-dry] [--organize-imports] [--format] [--summary|--json]
   - Applies the same pipeline over a file set (git integration); summary aggregates errors/fixes
 - diag <path> [--json]
   - Thin wrapper for plain diagnostics
 - health [--json]
-  - Checks server availability, tsconfig parsing, project graph, plugin status
+  - Checks server availability, tsconfig parsing, project graph, plugin status; expose queue depth, cache hits, latency histograms
 
 jump
 - def <path:line:col>
@@ -57,12 +58,15 @@ refactor
 - extract <function|constant> <path:range> [--name <name>] [--dry]
 - format <path|--changed> [--range A:B] [--write|--check]
   - All editing commands prefer to return WorkspaceEdit; application requires confirmation unless explicitly asked
+  - Define snapshot consistency for multi-file edits; conflicts are surfaced deterministically with exit code 2
 
 edit
 - apply <edits.json> [--dry] [--json]
   - Applies LSP WorkspaceEdit from file/stdin; supports VS Code change schema and tsserver change set
+  - Guarantees atomicity per-file; order of documentChanges is preserved; partial failures revert per-file
 - plan <path> [--from <rev>] [--to <rev>] [--json]
   - Produces a WorkspaceEdit plan from diffs or suggested changes
+  - `--json` outputs are guaranteed to round-trip into `edit apply` without modification
 
 graph
 - calls in|out <path:line:col> [--depth N]
@@ -72,11 +76,12 @@ graph
   - TS-project graph integration for dependencies; call hierarchy via LSP
 
 daemon
-- start [--log-level L] [--trace flags]
+- start [--log-level L] [--trace flags|preset]
 - stop
 - status [--json]
 - logs [--tail N] [--follow]
   - Uses /tmp/lsp-top.sock and /tmp/lsp-top.log; PID at /tmp/lsp-top.pid
+  - Single-writer policy on the unix socket; cache invalidation on git checkout/branch switch and tsconfig changes
 
 project
 - init <alias> [path]
@@ -112,9 +117,11 @@ Implementation notes
 - Safety: never execute code-actions that run commands; only apply pure edits
 
 CLI UX patterns
+- Defaults should present actionable next steps; `inspect file` shows fixes with safe apply affordances
 - List outputs align columns and include source snippets where helpful
 - When multiple locations, show top N with `--limit`; suggest `--json` for full data
 - TTY detection: richer formatting when interactive; plain when piped
+- `--help` includes real-world transcripts that can be copy-pasted
 
 Examples
 - lsp-top inspect file src/index.ts --fix-dry --organize-imports --format --json
@@ -126,12 +133,13 @@ Open questions
 - How to unify organize-imports and format across non-TS servers?
 - Policy for ambiguous code actions selection in non-interactive mode
 - Handling large WorkspaceEdits (thousands of changes)
+- Should outputs support live JSON streams for interactive tools and agents?
 
 RFC
 - Background: Developers need a compact CLI to query and manipulate TS code using LSP with minimal ceremony. Existing editors provide UIs; we provide a scriptable shell interface.
 - Proposal: Introduce grouped verbs (inspect, jump, search, info, refactor, edit, graph) mapping to high-value workstreams rather than raw LSP calls. Maintain JSON envelopes and preview-first editing.
 - Alternatives: Expose raw LSP methods 1:1; create many granular commands. Rejected for verbosity and discoverability issues.
 - Compatibility: Backward-compatible with existing `run` usage by hosting new verbs under daemon; `run` remains for power-users.
-- Security: Do not execute command-type actions; only apply textual edits. No network access beyond local daemon.
+- Security: Do not execute command-type actions; only apply textual edits. Validate URIs and normalize paths to project root to prevent traversal. No network access beyond local daemon.
 - Migration: Implement groups incrementally; retain current diagnostics/definition as aliases under new verbs.
 - Success metrics: p50 latency < 200ms for common queries; < 1 command per task for typical flows; JSON outputs consumed by CI and scripts.
