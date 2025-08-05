@@ -1,190 +1,245 @@
 #!/usr/bin/env node
 
-import { Command } from 'commander';
-import { ConfigManager } from './config';
-import * as path from 'path';
-import { log, setLogLevel, setTraceFlags, Level, metrics } from './logger';
-import { printJsonAndExit, printTextAndExit, result } from './errors';
-import * as net from 'net';
-import { spawn } from 'child_process';
-import * as fs from 'fs';
+import { Command } from "commander";
+import { ConfigManager } from "./config";
+import * as path from "path";
+import { log, setLogLevel, setTraceFlags, Level, metrics } from "./logger";
+import { printJsonAndExit, printTextAndExit, result } from "./errors";
+import * as net from "net";
+import { spawn } from "child_process";
+import * as fs from "fs";
 
-const SOCKET_PATH = '/tmp/lsp-top.sock';
-const LOG_FILE = '/tmp/lsp-top.log';
+const SOCKET_PATH = "/tmp/lsp-top.sock";
+const LOG_FILE = "/tmp/lsp-top.log";
 
 const program = new Command();
 const config = new ConfigManager();
 
 program
-  .name('lsp-top')
-  .description('LSP server wrapper for running language server commands from anywhere')
-  .version((() => {
-  try { return JSON.parse(fs.readFileSync(path.resolve(__dirname, '../package.json'), 'utf-8')).version || '0.0.0'; } catch { return '0.0.0'; }
-})())
-  .option('-v, --verbose', 'Enable verbose logging')
-  .option('-q, --quiet', 'Suppress non-error output')
-  .option('--json', 'Output machine-readable JSON only')
-  .option('--log-level <level>', 'Set log level (error|warn|info|debug|trace)')
-  .option('--trace <flags>', 'Comma-separated trace flags');
+  .name("lsp-top")
+  .description(
+    "LSP server wrapper for running language server commands from anywhere",
+  )
+  .version(
+    (() => {
+      try {
+        return (
+          JSON.parse(
+            fs.readFileSync(
+              path.resolve(__dirname, "../package.json"),
+              "utf-8",
+            ),
+          ).version || "0.0.0"
+        );
+      } catch {
+        return "0.0.0";
+      }
+    })(),
+  )
+  .option("-v, --verbose", "Enable verbose logging")
+  .option("-q, --quiet", "Suppress non-error output")
+  .option("--json", "Output machine-readable JSON only")
+  .option("--log-level <level>", "Set log level (error|warn|info|debug|trace)")
+  .option("--trace <flags>", "Comma-separated trace flags");
 
 program
-  .command('start-server')
-  .description('Start the LSP daemon')
-    .option('-v, --verbose', 'Enable verbose logging')
-    .option('-q, --quiet', 'Suppress non-error output')
-    .option('--log-level <level>', 'Set log level (error|warn|info|debug|trace)')
-    .option('--trace <flags>', 'Comma-separated trace flags')
-    .action((options) => {
-      const args: string[] = [];
-      if (options.verbose) args.push('--verbose');
-      if (options.logLevel) args.push('--log-level', String(options.logLevel));
-      if (options.trace) args.push('--trace', String(options.trace));
-      const daemon = spawn(process.argv[0], [path.resolve(__dirname, 'daemon.js'), ...args], {
+  .command("start-server")
+  .description("Start the LSP daemon")
+  .option("-v, --verbose", "Enable verbose logging")
+  .option("-q, --quiet", "Suppress non-error output")
+  .option("--log-level <level>", "Set log level (error|warn|info|debug|trace)")
+  .option("--trace <flags>", "Comma-separated trace flags")
+  .action((options) => {
+    const args: string[] = [];
+    if (options.verbose) args.push("--verbose");
+    if (options.logLevel) args.push("--log-level", String(options.logLevel));
+    if (options.trace) args.push("--trace", String(options.trace));
+    const daemon = spawn(
+      process.argv[0],
+      [path.resolve(__dirname, "daemon.js"), ...args],
+      {
         detached: true,
-        stdio: 'ignore',
-      });
-      daemon.unref();
-      printTextAndExit('LSP daemon started.');
-    });
+        stdio: "ignore",
+      },
+    );
+    daemon.unref();
+    printTextAndExit("LSP daemon started.");
+  });
 program
-   .command('metrics')  .description('Show daemon status')
-  .option('--json', 'Output machine-readable JSON only')
+  .command("metrics")
+  .description("Show daemon status")
+  .option("--json", "Output machine-readable JSON only")
   .action(() => {
     const client = net.connect(SOCKET_PATH, () => {
-      client.write(JSON.stringify({ action: 'status' }));
+      client.write(JSON.stringify({ action: "status" }));
     });
-    client.on('data', (data) => {
+    client.on("data", (data) => {
       try {
         const info = JSON.parse(data.toString());
-         if (info && info.ok) {
+        if (info && info.ok) {
           if (program.opts().json) {
             printJsonAndExit(result({ ok: true, data: info }));
           } else {
             printTextAndExit(`Daemon: running, sessions=${info.sessions}`);
-          }        } else {
-          const msg = (info && info.error) || 'Unknown error';
-           if (program.opts().json) printJsonAndExit(result({ ok: false, error: msg, code: 'STATUS_ERROR' }), 'STATUS_ERROR');
-          else printTextAndExit(`Error: ${msg}`, true, 'STATUS_ERROR');        }
+          }
+        } else {
+          const msg = (info && info.error) || "Unknown error";
+          if (program.opts().json)
+            printJsonAndExit(
+              result({ ok: false, error: msg, code: "STATUS_ERROR" }),
+              "STATUS_ERROR",
+            );
+          else printTextAndExit(`Error: ${msg}`, true, "STATUS_ERROR");
+        }
       } catch {
         printTextAndExit(data.toString());
       }
     });
-    client.on('error', () => {
-      const msg = 'Daemon not running';
-      if (program.opts().json) printJsonAndExit(result({ ok: false, error: msg, code: 'DAEMON_NOT_RUNNING' }), 'DAEMON_NOT_RUNNING');
-      else printTextAndExit(msg, true, 'DAEMON_NOT_RUNNING');
+    client.on("error", () => {
+      const msg = "Daemon not running";
+      if (program.opts().json)
+        printJsonAndExit(
+          result({ ok: false, error: msg, code: "DAEMON_NOT_RUNNING" }),
+          "DAEMON_NOT_RUNNING",
+        );
+      else printTextAndExit(msg, true, "DAEMON_NOT_RUNNING");
     });
   });
 
 program
-  .command('stop-server')
-  .description('Stop the LSP daemon')
+  .command("stop-server")
+  .description("Stop the LSP daemon")
   .action(() => {
     const client = net.connect(SOCKET_PATH, () => {
-      client.write(JSON.stringify({ action: 'stop' }));
+      client.write(JSON.stringify({ action: "stop" }));
     });
 
-    client.on('data', () => {
-      console.log('LSP daemon stopped.');
+    client.on("data", () => {
+      console.log("LSP daemon stopped.");
       client.end();
     });
 
-    client.on('error', () => {
-      printTextAndExit('Failed to connect to daemon. Is it running?', true, 'DAEMON_UNAVAILABLE');
+    client.on("error", () => {
+      printTextAndExit(
+        "Failed to connect to daemon. Is it running?",
+        true,
+        "DAEMON_UNAVAILABLE",
+      );
     });
   });
 
 program
-    .command('logs')
-    .description('Show daemon logs')
-    .option('--tail <n>', 'Tail last N lines')
-    .option('--follow', 'Follow log output')
-    .action((options) => {
-        const pidFile = '/tmp/lsp-top.pid';
-        const pid = fs.existsSync(pidFile) ? parseInt(fs.readFileSync(pidFile, 'utf-8'), 10) : null;
-        const levelInfo = (() => {
+  .command("logs")
+  .description("Show daemon logs")
+  .option("--tail <n>", "Tail last N lines")
+  .option("--follow", "Follow log output")
+  .action((options) => {
+    const pidFile = "/tmp/lsp-top.pid";
+    const pid = fs.existsSync(pidFile)
+      ? parseInt(fs.readFileSync(pidFile, "utf-8"), 10)
+      : null;
+    const levelInfo = (() => {
+      try {
+        const content = fs.existsSync(LOG_FILE)
+          ? fs.readFileSync(LOG_FILE, "utf-8")
+          : "";
+        const lines = content.trim().split("\n");
+        for (let i = lines.length - 1; i >= 0; i--) {
+          const line = lines[i];
           try {
-            const content = fs.existsSync(LOG_FILE) ? fs.readFileSync(LOG_FILE, 'utf-8') : '';
-            const lines = content.trim().split('\n');
-            for (let i = lines.length - 1; i >= 0; i--) {
-              const line = lines[i];
-              try {
-                const obj = JSON.parse(line);
-                if (obj && typeof obj.level === 'string') return obj.level;
-              } catch {}
-            }
-            return null;
-          } catch { return null; }
-        })();
-        if (!fs.existsSync(LOG_FILE)) {
-            printTextAndExit('Log file not found.', true, 'STATUS_ERROR');
-            return;
+            const obj = JSON.parse(line);
+            if (obj && typeof obj.level === "string") return obj.level;
+          } catch {}
         }
-        const readAll = () => fs.readFileSync(LOG_FILE, 'utf-8').split('\n');
-        const printHeader = () => {
-          console.log(`PID: ${pid ?? 'unknown'}`);
-          console.log(`Level: ${levelInfo ?? 'unknown'}`);
-          console.log('---');
-        };
-        const output = (lines: string[]) => {
-          const filtered = lines.filter(Boolean);
-          if (options.tail) {
-            const n = parseInt(String(options.tail), 10);
-            const start = Math.max(0, filtered.length - (isNaN(n) ? 50 : n));
-            filtered.slice(start).forEach((l) => console.log(l));
-          } else {
-            filtered.forEach((l) => console.log(l));
+        return null;
+      } catch {
+        return null;
+      }
+    })();
+    if (!fs.existsSync(LOG_FILE)) {
+      printTextAndExit("Log file not found.", true, "STATUS_ERROR");
+      return;
+    }
+    const readAll = () => fs.readFileSync(LOG_FILE, "utf-8").split("\n");
+    const printHeader = () => {
+      console.log(`PID: ${pid ?? "unknown"}`);
+      console.log(`Level: ${levelInfo ?? "unknown"}`);
+      console.log("---");
+    };
+    const output = (lines: string[]) => {
+      const filtered = lines.filter(Boolean);
+      if (options.tail) {
+        const n = parseInt(String(options.tail), 10);
+        const start = Math.max(0, filtered.length - (isNaN(n) ? 50 : n));
+        filtered.slice(start).forEach((l) => console.log(l));
+      } else {
+        filtered.forEach((l) => console.log(l));
+      }
+    };
+    if (options.follow) {
+      printHeader();
+      let lastSize = fs.statSync(LOG_FILE).size;
+      output(readAll());
+      const interval = setInterval(() => {
+        try {
+          const stat = fs.statSync(LOG_FILE);
+          if (stat.size > lastSize) {
+            const content = fs.readFileSync(LOG_FILE, "utf-8");
+            const lines = content.split("\n");
+            output(lines);
+            lastSize = stat.size;
           }
-        };
-        if (options.follow) {
-          printHeader();
-          let lastSize = fs.statSync(LOG_FILE).size;
-          output(readAll());
-          const interval = setInterval(() => {
-            try {
-              const stat = fs.statSync(LOG_FILE);
-              if (stat.size > lastSize) {
-                const content = fs.readFileSync(LOG_FILE, 'utf-8');
-                const lines = content.split('\n');
-                output(lines);
-                lastSize = stat.size;
-              }
-            } catch {}
-          }, 1000);
-          process.on('SIGINT', () => { clearInterval(interval); process.exit(0); });
-          process.on('SIGTERM', () => { clearInterval(interval); process.exit(0); });
-        } else {
-          printHeader();
-          output(readAll());
-        }
-    });
-
-program
-  .command('init <alias> [path]')
-  .description('Initialize a project with an alias')
-  .action((alias: string, projectPath?: string) => {
-    try {
-      const pathToUse = projectPath || process.cwd();
-      config.addAlias(alias, pathToUse);
-      printTextAndExit(`✓ Initialized project '${alias}' at ${path.resolve(pathToUse)}`);
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : String(error);
-      printTextAndExit(`Error: ${msg}`, true, 'GENERAL_ERROR');
+        } catch {}
+      }, 1000);
+      process.on("SIGINT", () => {
+        clearInterval(interval);
+        process.exit(0);
+      });
+      process.on("SIGTERM", () => {
+        clearInterval(interval);
+        process.exit(0);
+      });
+    } else {
+      printHeader();
+      output(readAll());
     }
   });
 
 program
-  .command('configure')
-  .description('Show or set configuration')
-  .option('--set-alias <alias:path>', 'Set alias mapping, e.g., web:/path')
-  .option('--print', 'Print effective config')
-  .option('--env <keys>', 'Comma-separated env keys to include in effective config')
-  .option('--json', 'Output machine-readable JSON only')
+  .command("init <alias> [path]")
+  .description("Initialize a project with an alias")
+  .action((alias: string, projectPath?: string) => {
+    try {
+      const pathToUse = projectPath || process.cwd();
+      config.addAlias(alias, pathToUse);
+      printTextAndExit(
+        `✓ Initialized project '${alias}' at ${path.resolve(pathToUse)}`,
+      );
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      printTextAndExit(`Error: ${msg}`, true, "GENERAL_ERROR");
+    }
+  });
+
+program
+  .command("configure")
+  .description("Show or set configuration")
+  .option("--set-alias <alias:path>", "Set alias mapping, e.g., web:/path")
+  .option("--print", "Print effective config")
+  .option(
+    "--env <keys>",
+    "Comma-separated env keys to include in effective config",
+  )
+  .option("--json", "Output machine-readable JSON only")
   .action((options) => {
     if (options.setAlias) {
-      const [alias, p] = String(options.setAlias).split(':');
+      const [alias, p] = String(options.setAlias).split(":");
       if (!alias || !p) {
-        printTextAndExit('Error: --set-alias requires format alias:path', true, 'BAD_FLAG');
+        printTextAndExit(
+          "Error: --set-alias requires format alias:path",
+          true,
+          "BAD_FLAG",
+        );
       }
       try {
         config.addAlias(alias, p);
@@ -192,57 +247,78 @@ program
         else printJsonAndExit(result({ ok: true }));
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e);
-        if (options.json) printJsonAndExit(result({ ok: false, error: msg, code: 'CONFIG_SET_ERROR' }), 'CONFIG_SET_ERROR');
-        else printTextAndExit(`Error: ${msg}`, true, 'CONFIG_SET_ERROR');
+        if (options.json)
+          printJsonAndExit(
+            result({ ok: false, error: msg, code: "CONFIG_SET_ERROR" }),
+            "CONFIG_SET_ERROR",
+          );
+        else printTextAndExit(`Error: ${msg}`, true, "CONFIG_SET_ERROR");
       }
       return;
     }
 
-    const keys = options.env ? String(options.env).split(',').map((s) => s.trim()) : [];
+    const keys = options.env
+      ? String(options.env)
+          .split(",")
+          .map((s) => s.trim())
+      : [];
     const eff = config.effectiveConfig(keys);
     if (options.json || options.print) {
       console.log(JSON.stringify(eff, null, options.json ? 0 : 2));
     } else {
-      printTextAndExit('Use --print to display effective config');
+      printTextAndExit("Use --print to display effective config");
     }
   });
 
 program
-  .command('list')
-  .description('List all project aliases')
+  .command("list")
+  .description("List all project aliases")
   .action(() => {
     const aliases = config.listAliases();
     const entries = Object.entries(aliases);
-    
+
     if (entries.length === 0) {
-      console.log('No projects configured. Use "lsp-top init <alias> [path]" to add one.');
+      console.log(
+        'No projects configured. Use "lsp-top init <alias> [path]" to add one.',
+      );
       return;
     }
-    
-      printTextAndExit('Configured projects:');    entries.forEach(([alias, path]) => {
+
+    printTextAndExit("Configured projects:");
+    entries.forEach(([alias, path]) => {
       console.log(`  ${alias} -> ${path}`);
     });
   });
 
 program
-  .command('remove <alias>')
-  .description('Remove a project alias')
+  .command("remove <alias>")
+  .description("Remove a project alias")
   .action((alias: string) => {
     if (config.removeAlias(alias)) {
       printTextAndExit(`✓ Removed project '${alias}'`);
     } else {
-      printTextAndExit(`Error: Project '${alias}' not found`, true, 'ALIAS_NOT_FOUND');
+      printTextAndExit(
+        `Error: Project '${alias}' not found`,
+        true,
+        "ALIAS_NOT_FOUND",
+      );
     }
   });
 
 program
-  .command('diagnose [alias]')
-  .description('Diagnose environment and server readiness')
-  .option('--json', 'Output machine-readable JSON only')
+  .command("diagnose [alias]")
+  .description("Diagnose environment and server readiness")
+  .option("--json", "Output machine-readable JSON only")
   .action(async (alias?: string, options?: any) => {
-    const checks: any = { ok: true, node: process.version, hasTypescriptServer: false, alias, projectPath: undefined };
+    const checks: any = {
+      ok: true,
+      node: process.version,
+      hasTypescriptServer: false,
+      alias,
+      projectPath: undefined,
+    };
     try {
-      const pkg = require.resolve('@vtsls/language-server/package.json');
+      const pkg = require.resolve("@vtsls/language-server/package.json");
       checks.hasTypescriptServer = !!pkg;
     } catch {
       checks.hasTypescriptServer = false;
@@ -253,92 +329,175 @@ program
       checks.projectPath = p;
       if (!p) checks.ok = false;
     }
-    if (options?.json) printJsonAndExit(checks, checks.ok ? 'OK' : 'DIAGNOSE_FAILED');
-    else printTextAndExit(JSON.stringify(checks, null, 2), !checks.ok, checks.ok ? 'OK' : 'DIAGNOSE_FAILED');
+    if (options?.json)
+      printJsonAndExit(checks, checks.ok ? "OK" : "DIAGNOSE_FAILED");
+    else
+      printTextAndExit(
+        JSON.stringify(checks, null, 2),
+        !checks.ok,
+        checks.ok ? "OK" : "DIAGNOSE_FAILED",
+      );
   });
 
 program
-  .command('inspect <alias> <mode> [path]')
-  .description('Inspect files for diagnostics and candidate edits')
-  .option('--fix', 'Apply quick fixes (preview)')
-  .option('--fix-dry', 'Plan fixes without applying')
-  .option('--organize-imports', 'Organize imports')
-  .option('--format', 'Format files')
-  .option('--write', 'Apply edits to disk')
-  .option('--staged', 'Limit to staged changes for changed mode')
-  .option('--json', 'Output machine-readable JSON only')
-  .action(async (alias: string, mode: string, filePath: string | undefined, options) => {
-    if (mode === 'file' && !filePath) {
-      printTextAndExit('Error: path required for inspect file', true, 'BAD_FLAG');
-    }
-    const level = (options.logLevel ? String(options.logLevel) : (options.verbose ? 'debug' : 'info')) as Level;
-    setLogLevel(level);
-    if (options.trace) setTraceFlags(String(options.trace).split(',').map((s) => s.trim()).filter(Boolean));
-    const projectPath = config.getPath(alias);
-    if (!projectPath) {
-      const msg = `Project '${alias}' not found. Use 'lsp-top list' to see available projects.`;
-      if (options.json) {
-        printJsonAndExit(result({ ok: false, error: msg, code: 'ALIAS_NOT_FOUND' }), 'ALIAS_NOT_FOUND');
-      } else {
-        printTextAndExit(`Error: ${msg}`, true, 'ALIAS_NOT_FOUND');
+  .command("inspect <alias> <mode> [path]")
+  .description("Inspect files for diagnostics and candidate edits")
+  .option("--fix", "Apply quick fixes (preview)")
+  .option("--fix-dry", "Plan fixes without applying")
+  .option("--organize-imports", "Organize imports")
+  .option("--format", "Format files")
+  .option("--write", "Apply edits to disk")
+  .option("--staged", "Limit to staged changes for changed mode")
+  .option("--json", "Output machine-readable JSON only")
+  .action(
+    async (
+      alias: string,
+      mode: string,
+      filePath: string | undefined,
+      options,
+    ) => {
+      if (mode === "file" && !filePath) {
+        printTextAndExit(
+          "Error: path required for inspect file",
+          true,
+          "BAD_FLAG",
+        );
       }
-    }
-    const client = net.connect(SOCKET_PATH, () => {
-      const flags = JSON.stringify({ fix: !!options.fix, fixDry: !!options.fixDry, organizeImports: !!options.organizeImports, format: !!options.format, write: !!options.write, staged: !!options.staged });
-      const action = mode === 'file' ? 'inspect:file' : 'inspect:changed';
-      const args = mode === 'file' ? [String(filePath || '') , flags] : [flags];
-      client.write(JSON.stringify({ alias, action, args, projectPath, verbose: options.verbose, logLevel: level, trace: options.trace || '' }));
-    });
-
-    let buffer = '';
-    client.on('data', (data) => {
-      buffer += data.toString();
-      let boundary = buffer.indexOf('\n');
-      while (boundary !== -1) {
-        const chunk = buffer.substring(0, boundary);
-        buffer = buffer.substring(boundary + 1);
-        if (chunk) {
-          try {
-            const response = JSON.parse(chunk);
-            if (response.type === 'result') {
-              if (options.json) printJsonAndExit(result({ ok: true, data: response.data }));
-              else printTextAndExit(JSON.stringify(response.data, null, 2));
-            } else if (response.type === 'error') {
-              if (options.json) printJsonAndExit(result({ ok: false, error: response.message, code: response.code || 'DAEMON_UNAVAILABLE' }), 'DAEMON_UNAVAILABLE');
-              else printTextAndExit(`Error: ${response.message}`, true, 'DAEMON_UNAVAILABLE');
-            }
-          } catch {}
+      const level = (
+        options.logLevel
+          ? String(options.logLevel)
+          : options.verbose
+            ? "debug"
+            : "info"
+      ) as Level;
+      setLogLevel(level);
+      if (options.trace)
+        setTraceFlags(
+          String(options.trace)
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
+        );
+      const projectPath = config.getPath(alias);
+      if (!projectPath) {
+        const msg = `Project '${alias}' not found. Use 'lsp-top list' to see available projects.`;
+        if (options.json) {
+          printJsonAndExit(
+            result({ ok: false, error: msg, code: "ALIAS_NOT_FOUND" }),
+            "ALIAS_NOT_FOUND",
+          );
+        } else {
+          printTextAndExit(`Error: ${msg}`, true, "ALIAS_NOT_FOUND");
         }
-        boundary = buffer.indexOf('\n');
       }
-    });
+      const client = net.connect(SOCKET_PATH, () => {
+        const flags = JSON.stringify({
+          fix: !!options.fix,
+          fixDry: !!options.fixDry,
+          organizeImports: !!options.organizeImports,
+          format: !!options.format,
+          write: !!options.write,
+          staged: !!options.staged,
+        });
+        const action = mode === "file" ? "inspect:file" : "inspect:changed";
+        const args =
+          mode === "file" ? [String(filePath || ""), flags] : [flags];
+        client.write(
+          JSON.stringify({
+            alias,
+            action,
+            args,
+            projectPath,
+            verbose: options.verbose,
+            logLevel: level,
+            trace: options.trace || "",
+          }),
+        );
+      });
 
-    client.on('error', () => {
-      const msg = 'Failed to connect to daemon. Is it running?';
-      if (options.json) printJsonAndExit(result({ ok: false, error: msg, code: 'DAEMON_UNAVAILABLE' }), 'DAEMON_UNAVAILABLE');
-      else printTextAndExit(msg, true, 'DAEMON_UNAVAILABLE');
-    });
-  });
+      let buffer = "";
+      client.on("data", (data) => {
+        buffer += data.toString();
+        let boundary = buffer.indexOf("\n");
+        while (boundary !== -1) {
+          const chunk = buffer.substring(0, boundary);
+          buffer = buffer.substring(boundary + 1);
+          if (chunk) {
+            try {
+              const response = JSON.parse(chunk);
+              if (response.type === "result") {
+                if (options.json)
+                  printJsonAndExit(result({ ok: true, data: response.data }));
+                else printTextAndExit(JSON.stringify(response.data, null, 2));
+              } else if (response.type === "error") {
+                if (options.json)
+                  printJsonAndExit(
+                    result({
+                      ok: false,
+                      error: response.message,
+                      code: response.code || "DAEMON_UNAVAILABLE",
+                    }),
+                    "DAEMON_UNAVAILABLE",
+                  );
+                else
+                  printTextAndExit(
+                    `Error: ${response.message}`,
+                    true,
+                    "DAEMON_UNAVAILABLE",
+                  );
+              }
+            } catch {}
+          }
+          boundary = buffer.indexOf("\n");
+        }
+      });
+
+      client.on("error", () => {
+        const msg = "Failed to connect to daemon. Is it running?";
+        if (options.json)
+          printJsonAndExit(
+            result({ ok: false, error: msg, code: "DAEMON_UNAVAILABLE" }),
+            "DAEMON_UNAVAILABLE",
+          );
+        else printTextAndExit(msg, true, "DAEMON_UNAVAILABLE");
+      });
+    },
+  );
 
 program
-  .command('run <alias> <action> [args...]')
-  .description('Run an LSP action for a project')
-  .option('-v, --verbose', 'Enable verbose logging')
-  .option('-q, --quiet', 'Suppress non-error output')
-  .option('--json', 'Output machine-readable JSON only')
-  .option('--log-level <level>', 'Set log level (error|warn|info|debug|trace)')
-  .option('--trace <flags>', 'Comma-separated trace flags')
+  .command("run <alias> <action> [args...]")
+  .description("Run an LSP action for a project")
+  .option("-v, --verbose", "Enable verbose logging")
+  .option("-q, --quiet", "Suppress non-error output")
+  .option("--json", "Output machine-readable JSON only")
+  .option("--log-level <level>", "Set log level (error|warn|info|debug|trace)")
+  .option("--trace <flags>", "Comma-separated trace flags")
   .action(async (alias: string, action: string, args: string[], options) => {
-    const level = (options.logLevel ? String(options.logLevel) : (options.verbose ? 'debug' : 'info')) as Level;
+    const level = (
+      options.logLevel
+        ? String(options.logLevel)
+        : options.verbose
+          ? "debug"
+          : "info"
+    ) as Level;
     setLogLevel(level);
-    if (options.trace) setTraceFlags(String(options.trace).split(',').map((s) => s.trim()).filter(Boolean));
+    if (options.trace)
+      setTraceFlags(
+        String(options.trace)
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      );
     const projectPath = config.getPath(alias);
     if (!projectPath) {
       const msg = `Project '${alias}' not found. Use 'lsp-top list' to see available projects.`;
       if (options.json) {
-        printJsonAndExit(result({ ok: false, error: msg, code: 'ALIAS_NOT_FOUND' }), 'ALIAS_NOT_FOUND');
+        printJsonAndExit(
+          result({ ok: false, error: msg, code: "ALIAS_NOT_FOUND" }),
+          "ALIAS_NOT_FOUND",
+        );
       } else {
-        printTextAndExit(`Error: ${msg}`, true, 'ALIAS_NOT_FOUND');
+        printTextAndExit(`Error: ${msg}`, true, "ALIAS_NOT_FOUND");
       }
     }
     const client = net.connect(SOCKET_PATH, () => {
@@ -349,55 +508,76 @@ program
         projectPath,
         verbose: options.verbose,
         logLevel: level,
-        trace: options.trace || ''
+        trace: options.trace || "",
       } as any;
       client.write(JSON.stringify(request));
     });
 
-    let buffer = '';
-    client.on('data', (data) => {
-        buffer += data.toString();
-        let boundary = buffer.indexOf('\n');
-        while (boundary !== -1) {
-            const chunk = buffer.substring(0, boundary);
-            buffer = buffer.substring(boundary + 1);
-            if (chunk) {
-                try {
-                    const response = JSON.parse(chunk);
-                    if (response.type === 'log' && options.verbose && !options.json) {
-                        console.log(response.data);
-                    } else if (response.type === 'result') {
-                        if (options.json) {
-                            printJsonAndExit(result({ ok: true, data: response.data }));
-                        } else {
-                            printTextAndExit(JSON.stringify(response.data, null, 2));
-                        }
-                    } else if (response.type === 'error') {
-                        if (options.json) {
-                            printJsonAndExit(result({ ok: false, error: response.message, code: response.code || 'DAEMON_UNAVAILABLE' }), 'DAEMON_UNAVAILABLE');
-                        } else {
-                            printTextAndExit(`Error: ${response.message}`, true, 'DAEMON_UNAVAILABLE');
-                        }
-                    }                } catch (e) {
-                    console.error('Error parsing daemon response:', e, 'Chunk:', chunk);
-                }
+    let buffer = "";
+    client.on("data", (data) => {
+      buffer += data.toString();
+      let boundary = buffer.indexOf("\n");
+      while (boundary !== -1) {
+        const chunk = buffer.substring(0, boundary);
+        buffer = buffer.substring(boundary + 1);
+        if (chunk) {
+          try {
+            const response = JSON.parse(chunk);
+            if (response.type === "log" && options.verbose && !options.json) {
+              console.log(response.data);
+            } else if (response.type === "result") {
+              if (options.json) {
+                printJsonAndExit(result({ ok: true, data: response.data }));
+              } else {
+                printTextAndExit(JSON.stringify(response.data, null, 2));
+              }
+            } else if (response.type === "error") {
+              if (options.json) {
+                printJsonAndExit(
+                  result({
+                    ok: false,
+                    error: response.message,
+                    code: response.code || "DAEMON_UNAVAILABLE",
+                  }),
+                  "DAEMON_UNAVAILABLE",
+                );
+              } else {
+                printTextAndExit(
+                  `Error: ${response.message}`,
+                  true,
+                  "DAEMON_UNAVAILABLE",
+                );
+              }
             }
-            boundary = buffer.indexOf('\n');
+          } catch (e) {
+            console.error("Error parsing daemon response:", e, "Chunk:", chunk);
+          }
         }
+        boundary = buffer.indexOf("\n");
+      }
     });
 
-    client.on('error', (err) => {
-      const msg = 'Failed to connect to daemon. Is it running?';
+    client.on("error", (err) => {
+      const msg = "Failed to connect to daemon. Is it running?";
       if (options.json) {
-        printJsonAndExit(result({ ok: false, error: msg, code: 'DAEMON_UNAVAILABLE' }), 'DAEMON_UNAVAILABLE');
+        printJsonAndExit(
+          result({ ok: false, error: msg, code: "DAEMON_UNAVAILABLE" }),
+          "DAEMON_UNAVAILABLE",
+        );
       } else {
-        printTextAndExit(msg, true, 'DAEMON_UNAVAILABLE');
+        printTextAndExit(msg, true, "DAEMON_UNAVAILABLE");
       }
-      log('warn', 'Connection error', { message: err.message });
+      log("warn", "Connection error", { message: err.message });
     });
   });
 
 const parsed = program.parse(process.argv);
 const globalOpts = parsed.opts();
 if (globalOpts.logLevel) setLogLevel(String(globalOpts.logLevel) as Level);
-if (globalOpts.trace) setTraceFlags(String(globalOpts.trace).split(',').map((s: string) => s.trim()).filter(Boolean));
+if (globalOpts.trace)
+  setTraceFlags(
+    String(globalOpts.trace)
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean),
+  );
