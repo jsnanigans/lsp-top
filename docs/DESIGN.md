@@ -2,7 +2,8 @@
 
 ## Purpose
 
-A powerful command-line IDE that provides Language Server Protocol functionality through an intuitive CLI interface. LSP-Top enables developers and AI agents to understand, navigate, and refactor codebases without traditional editors, making it the "grep for code understanding."
+A powerful command-line IDE that provides Language Server Protocol functionality through an intuitive CLI interface. LSP-Top enables developers and AI agents to understand, navigate, and refactor codebases without traditional editors, making it the "grep for code understanding.".
+This is not a tool for live coding or interactive editing, but rather a way to perform complex code operations quickly and safely.
 
 ## Core Philosophy
 
