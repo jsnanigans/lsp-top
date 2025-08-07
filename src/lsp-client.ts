@@ -305,4 +305,45 @@ export class LSPClient {
       context: { includeDeclaration },
     });
   }
+
+  async getTypeDefinition(
+    uri: string,
+    line: number,
+    character: number,
+  ): Promise<any> {
+    return this.sendRequest("textDocument/typeDefinition", {
+      textDocument: { uri },
+      position: { line, character },
+    });
+  }
+
+  async getImplementation(
+    uri: string,
+    line: number,
+    character: number,
+  ): Promise<any> {
+    return this.sendRequest("textDocument/implementation", {
+      textDocument: { uri },
+      position: { line, character },
+    });
+  }
+
+  async getDocumentSymbols(uri: string): Promise<any> {
+    return this.sendRequest("textDocument/documentSymbol", {
+      textDocument: { uri },
+    });
+  }
+
+  async getWorkspaceSymbols(query: string): Promise<any> {
+    return this.sendRequest("workspace/symbol", {
+      query,
+    });
+  }
+
+  async getHover(uri: string, line: number, character: number): Promise<any> {
+    return this.sendRequest("textDocument/hover", {
+      textDocument: { uri },
+      position: { line, character },
+    });
+  }
 }

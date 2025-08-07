@@ -153,6 +153,93 @@ class TypeScriptLSP {
         }
         return await (0, logger_1.time)("typescript.references", async () => this.client.getReferences(uri, line - 1, character - 1, includeDeclaration));
     }
+    async getTypeDefinition(filePath, line, character) {
+        const uri = `file://${filePath}`;
+        const content = fs.readFileSync(filePath, "utf-8");
+        if (!this.openDocuments.has(uri)) {
+            this.client.sendMessage({
+                jsonrpc: "2.0",
+                method: "textDocument/didOpen",
+                params: {
+                    textDocument: {
+                        uri,
+                        languageId: "typescript",
+                        version: 1,
+                        text: content,
+                    },
+                },
+            });
+            this.openDocuments.add(uri);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+        return await (0, logger_1.time)("typescript.typeDefinition", async () => this.client.getTypeDefinition(uri, line - 1, character - 1));
+    }
+    async getImplementation(filePath, line, character) {
+        const uri = `file://${filePath}`;
+        const content = fs.readFileSync(filePath, "utf-8");
+        if (!this.openDocuments.has(uri)) {
+            this.client.sendMessage({
+                jsonrpc: "2.0",
+                method: "textDocument/didOpen",
+                params: {
+                    textDocument: {
+                        uri,
+                        languageId: "typescript",
+                        version: 1,
+                        text: content,
+                    },
+                },
+            });
+            this.openDocuments.add(uri);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+        return await (0, logger_1.time)("typescript.implementation", async () => this.client.getImplementation(uri, line - 1, character - 1));
+    }
+    async getDocumentSymbols(filePath) {
+        const uri = `file://${filePath}`;
+        const content = fs.readFileSync(filePath, "utf-8");
+        if (!this.openDocuments.has(uri)) {
+            this.client.sendMessage({
+                jsonrpc: "2.0",
+                method: "textDocument/didOpen",
+                params: {
+                    textDocument: {
+                        uri,
+                        languageId: "typescript",
+                        version: 1,
+                        text: content,
+                    },
+                },
+            });
+            this.openDocuments.add(uri);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+        return await (0, logger_1.time)("typescript.documentSymbols", async () => this.client.getDocumentSymbols(uri));
+    }
+    async getWorkspaceSymbols(query) {
+        return await (0, logger_1.time)("typescript.workspaceSymbols", async () => this.client.getWorkspaceSymbols(query));
+    }
+    async getHover(filePath, line, character) {
+        const uri = `file://${filePath}`;
+        const content = fs.readFileSync(filePath, "utf-8");
+        if (!this.openDocuments.has(uri)) {
+            this.client.sendMessage({
+                jsonrpc: "2.0",
+                method: "textDocument/didOpen",
+                params: {
+                    textDocument: {
+                        uri,
+                        languageId: "typescript",
+                        version: 1,
+                        text: content,
+                    },
+                },
+            });
+            this.openDocuments.add(uri);
+            await new Promise((resolve) => setTimeout(resolve, 500));
+        }
+        return await (0, logger_1.time)("typescript.hover", async () => this.client.getHover(uri, line - 1, character - 1));
+    }
     async codeActions(uri, diagnostics) {
         const range = {
             start: { line: 0, character: 0 },
@@ -242,7 +329,10 @@ class TypeScriptLSP {
             out.documentChanges = [];
             for (const dc of edit.documentChanges) {
                 if (dc && dc.textDocument && Array.isArray(dc.edits)) {
-                    out.documentChanges.push({ textDocument: { uri: dc.textDocument.uri }, edits: dc.edits });
+                    out.documentChanges.push({
+                        textDocument: { uri: dc.textDocument.uri },
+                        edits: dc.edits,
+                    });
                 }
             }
         }

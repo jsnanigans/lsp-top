@@ -459,11 +459,15 @@ program
     }
     const payload = (() => {
         if (mode === "plan") {
-            const txt = input ? fs.readFileSync(input, "utf-8") : fs.readFileSync(0, "utf-8");
+            const txt = input
+                ? fs.readFileSync(input, "utf-8")
+                : fs.readFileSync(0, "utf-8");
             return { action: "edit:plan", args: [txt] };
         }
         if (mode === "apply") {
-            const txt = input ? fs.readFileSync(input, "utf-8") : fs.readFileSync(0, "utf-8");
+            const txt = input
+                ? fs.readFileSync(input, "utf-8")
+                : fs.readFileSync(0, "utf-8");
             return { action: "edit:apply", args: [txt] };
         }
         (0, errors_1.printTextAndExit)("Error: mode must be plan or apply", true, "BAD_FLAG");
@@ -497,7 +501,11 @@ program
                     }
                     else if (response.type === "error") {
                         if (options.json)
-                            (0, errors_1.printJsonAndExit)((0, errors_1.result)({ ok: false, error: response.message, code: response.code || "DAEMON_UNAVAILABLE" }), "DAEMON_UNAVAILABLE");
+                            (0, errors_1.printJsonAndExit)((0, errors_1.result)({
+                                ok: false,
+                                error: response.message,
+                                code: response.code || "DAEMON_UNAVAILABLE",
+                            }), "DAEMON_UNAVAILABLE");
                         else
                             (0, errors_1.printTextAndExit)(`Error: ${response.message}`, true, "DAEMON_UNAVAILABLE");
                     }

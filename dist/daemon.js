@@ -201,6 +201,56 @@ class Daemon {
                 const flags = JSON.parse(args[1] || "{}");
                 return await lsp.getReferences(filePath, line, char, flags.includeDeclaration);
             }
+            case "typeDefinition": {
+                if (!args[0]) {
+                    throw new Error("File path and position required (e.g., file.ts:10:5)");
+                }
+                const [fileArg, lineStr, charStr] = args[0].split(":");
+                const filePath = (0, path_utils_1.resolveProjectPath)(projectPath, fileArg);
+                const line = parseInt(lineStr, 10);
+                const char = parseInt(charStr, 10);
+                if (isNaN(line) || isNaN(char)) {
+                    throw new Error("Invalid position format. Use file.ts:line:column");
+                }
+                return await lsp.getTypeDefinition(filePath, line, char);
+            }
+            case "implementation": {
+                if (!args[0]) {
+                    throw new Error("File path and position required (e.g., file.ts:10:5)");
+                }
+                const [fileArg, lineStr, charStr] = args[0].split(":");
+                const filePath = (0, path_utils_1.resolveProjectPath)(projectPath, fileArg);
+                const line = parseInt(lineStr, 10);
+                const char = parseInt(charStr, 10);
+                if (isNaN(line) || isNaN(char)) {
+                    throw new Error("Invalid position format. Use file.ts:line:column");
+                }
+                return await lsp.getImplementation(filePath, line, char);
+            }
+            case "documentSymbols": {
+                if (!args[0]) {
+                    throw new Error("File path required");
+                }
+                const filePath = (0, path_utils_1.resolveProjectPath)(projectPath, args[0]);
+                return await lsp.getDocumentSymbols(filePath);
+            }
+            case "workspaceSymbols": {
+                const query = args[0] || "";
+                return await lsp.getWorkspaceSymbols(query);
+            }
+            case "hover": {
+                if (!args[0]) {
+                    throw new Error("File path and position required (e.g., file.ts:10:5)");
+                }
+                const [fileArg, lineStr, charStr] = args[0].split(":");
+                const filePath = (0, path_utils_1.resolveProjectPath)(projectPath, fileArg);
+                const line = parseInt(lineStr, 10);
+                const char = parseInt(charStr, 10);
+                if (isNaN(line) || isNaN(char)) {
+                    throw new Error("Invalid position format. Use file.ts:line:column");
+                }
+                return await lsp.getHover(filePath, line, char);
+            }
             case "inspect:file": {
                 if (!args[0])
                     throw new Error("File path required");
@@ -220,7 +270,8 @@ class Daemon {
                 const raw = args[0] || "{}";
                 return await lsp.applyWorkspaceEditJson(raw);
             }
-            default: throw new Error(`Unknown action: ${action}`);
+            default:
+                throw new Error(`Unknown action: ${action}`);
         }
     }
 }

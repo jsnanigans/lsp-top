@@ -171,6 +171,128 @@ export class TypeScriptLSP {
     );
   }
 
+  async getTypeDefinition(
+    filePath: string,
+    line: number,
+    character: number,
+  ): Promise<any> {
+    const uri = `file://${filePath}`;
+    const content = fs.readFileSync(filePath, "utf-8");
+
+    if (!this.openDocuments.has(uri)) {
+      this.client.sendMessage({
+        jsonrpc: "2.0",
+        method: "textDocument/didOpen",
+        params: {
+          textDocument: {
+            uri,
+            languageId: "typescript",
+            version: 1,
+            text: content,
+          },
+        },
+      });
+      this.openDocuments.add(uri);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    return await time("typescript.typeDefinition", async () =>
+      this.client.getTypeDefinition(uri, line - 1, character - 1),
+    );
+  }
+
+  async getImplementation(
+    filePath: string,
+    line: number,
+    character: number,
+  ): Promise<any> {
+    const uri = `file://${filePath}`;
+    const content = fs.readFileSync(filePath, "utf-8");
+
+    if (!this.openDocuments.has(uri)) {
+      this.client.sendMessage({
+        jsonrpc: "2.0",
+        method: "textDocument/didOpen",
+        params: {
+          textDocument: {
+            uri,
+            languageId: "typescript",
+            version: 1,
+            text: content,
+          },
+        },
+      });
+      this.openDocuments.add(uri);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    return await time("typescript.implementation", async () =>
+      this.client.getImplementation(uri, line - 1, character - 1),
+    );
+  }
+
+  async getDocumentSymbols(filePath: string): Promise<any> {
+    const uri = `file://${filePath}`;
+    const content = fs.readFileSync(filePath, "utf-8");
+
+    if (!this.openDocuments.has(uri)) {
+      this.client.sendMessage({
+        jsonrpc: "2.0",
+        method: "textDocument/didOpen",
+        params: {
+          textDocument: {
+            uri,
+            languageId: "typescript",
+            version: 1,
+            text: content,
+          },
+        },
+      });
+      this.openDocuments.add(uri);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    return await time("typescript.documentSymbols", async () =>
+      this.client.getDocumentSymbols(uri),
+    );
+  }
+
+  async getWorkspaceSymbols(query: string): Promise<any> {
+    return await time("typescript.workspaceSymbols", async () =>
+      this.client.getWorkspaceSymbols(query),
+    );
+  }
+
+  async getHover(
+    filePath: string,
+    line: number,
+    character: number,
+  ): Promise<any> {
+    const uri = `file://${filePath}`;
+    const content = fs.readFileSync(filePath, "utf-8");
+
+    if (!this.openDocuments.has(uri)) {
+      this.client.sendMessage({
+        jsonrpc: "2.0",
+        method: "textDocument/didOpen",
+        params: {
+          textDocument: {
+            uri,
+            languageId: "typescript",
+            version: 1,
+            text: content,
+          },
+        },
+      });
+      this.openDocuments.add(uri);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
+
+    return await time("typescript.hover", async () =>
+      this.client.getHover(uri, line - 1, character - 1),
+    );
+  }
+
   private async codeActions(uri: string, diagnostics: any[]): Promise<any[]> {
     const range = {
       start: { line: 0, character: 0 },

@@ -213,6 +213,65 @@ class Daemon {
           flags.includeDeclaration,
         );
       }
+      case "typeDefinition": {
+        if (!args[0]) {
+          throw new Error(
+            "File path and position required (e.g., file.ts:10:5)",
+          );
+        }
+        const [fileArg, lineStr, charStr] = args[0].split(":");
+        const filePath = resolveProjectPath(projectPath, fileArg);
+        const line = parseInt(lineStr, 10);
+        const char = parseInt(charStr, 10);
+
+        if (isNaN(line) || isNaN(char)) {
+          throw new Error("Invalid position format. Use file.ts:line:column");
+        }
+        return await lsp.getTypeDefinition(filePath, line, char);
+      }
+      case "implementation": {
+        if (!args[0]) {
+          throw new Error(
+            "File path and position required (e.g., file.ts:10:5)",
+          );
+        }
+        const [fileArg, lineStr, charStr] = args[0].split(":");
+        const filePath = resolveProjectPath(projectPath, fileArg);
+        const line = parseInt(lineStr, 10);
+        const char = parseInt(charStr, 10);
+
+        if (isNaN(line) || isNaN(char)) {
+          throw new Error("Invalid position format. Use file.ts:line:column");
+        }
+        return await lsp.getImplementation(filePath, line, char);
+      }
+      case "documentSymbols": {
+        if (!args[0]) {
+          throw new Error("File path required");
+        }
+        const filePath = resolveProjectPath(projectPath, args[0]);
+        return await lsp.getDocumentSymbols(filePath);
+      }
+      case "workspaceSymbols": {
+        const query = args[0] || "";
+        return await lsp.getWorkspaceSymbols(query);
+      }
+      case "hover": {
+        if (!args[0]) {
+          throw new Error(
+            "File path and position required (e.g., file.ts:10:5)",
+          );
+        }
+        const [fileArg, lineStr, charStr] = args[0].split(":");
+        const filePath = resolveProjectPath(projectPath, fileArg);
+        const line = parseInt(lineStr, 10);
+        const char = parseInt(charStr, 10);
+
+        if (isNaN(line) || isNaN(char)) {
+          throw new Error("Invalid position format. Use file.ts:line:column");
+        }
+        return await lsp.getHover(filePath, line, char);
+      }
       case "inspect:file": {
         if (!args[0]) throw new Error("File path required");
         const filePath = resolveProjectPath(projectPath, args[0]);

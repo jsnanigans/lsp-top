@@ -257,5 +257,33 @@ class LSPClient {
             context: { includeDeclaration },
         });
     }
+    async getTypeDefinition(uri, line, character) {
+        return this.sendRequest("textDocument/typeDefinition", {
+            textDocument: { uri },
+            position: { line, character },
+        });
+    }
+    async getImplementation(uri, line, character) {
+        return this.sendRequest("textDocument/implementation", {
+            textDocument: { uri },
+            position: { line, character },
+        });
+    }
+    async getDocumentSymbols(uri) {
+        return this.sendRequest("textDocument/documentSymbol", {
+            textDocument: { uri },
+        });
+    }
+    async getWorkspaceSymbols(query) {
+        return this.sendRequest("workspace/symbol", {
+            query,
+        });
+    }
+    async getHover(uri, line, character) {
+        return this.sendRequest("textDocument/hover", {
+            textDocument: { uri },
+            position: { line, character },
+        });
+    }
 }
 exports.LSPClient = LSPClient;
