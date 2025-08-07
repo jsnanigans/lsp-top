@@ -9,6 +9,9 @@ export const EXIT_CODES = {
   CONFIG_SET_ERROR: 7,
   DIAGNOSE_FAILED: 8,
   ALIAS_NOT_FOUND: 9,
+  NO_PROJECT: 10,
+  LSP_ERROR: 11,
+  DAEMON_ERROR: 12,
 } as const;
 
 export type ExitCodeKey = keyof typeof EXIT_CODES;

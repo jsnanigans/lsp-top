@@ -3,22 +3,31 @@
 Build/lint/test
 - Install: pnpm install
 - Build: pnpm run build (tsc)
-- Dev entry: pnpm run dev -- <args> (or use node dist/cli.js <args>)
+- Dev entry: pnpm run dev -- <args> (or use node dist/cli-new.js <args>)
 - Typecheck: pnpm run build --noEmit false (tsc checks)
 - Lint: none configured (no eslint/prettier). Do not add.
 - Tests (root): none configured; use test-project for examples; manual CLI testing commands below
 - Tests (test-project): pnpm --filter test-project test
 - Single test (jest in test-project): pnpm --filter test-project jest path/to/test.ts -t "test name"
 
-Manual CLI testing:
-- Start daemon: node dist/cli.js start-server
-- Init test project: node dist/cli.js init test ./test-project
-- Definition: node dist/cli.js run test definition src/calculator.ts:11:3
-- References: node dist/cli.js run test references src/calculator.ts:4:14
-- Diagnostics: node dist/cli.js run test diagnostics src/index.ts
-- Inspect: node dist/cli.js inspect test file src/index.ts
-- Config: node dist/cli.js configure --print
-- Metrics: node dist/cli.js metrics
+Manual CLI testing (NEW API - no aliases/project management needed):
+- Definition: node dist/cli-new.js definition src/calculator.ts:11:3
+- References: node dist/cli-new.js references src/calculator.ts:4:14
+- Diagnostics: node dist/cli-new.js diagnostics src/index.ts
+- Hover: node dist/cli-new.js hover src/calculator.ts:4:14
+- Symbols: node dist/cli-new.js symbols src/index.ts
+- Inspect: node dist/cli-new.js inspect src/index.ts
+- Inspect changed: node dist/cli-new.js inspect-changed
+- Daemon status: node dist/cli-new.js daemon-status
+- Stop daemon: node dist/cli-new.js stop-daemon
+- Logs: node dist/cli-new.js logs [--tail N] [--follow]
+
+Note: 
+- Daemon starts automatically when any command is run
+- Daemon stops automatically after 5 minutes of inactivity
+- Projects are discovered by finding nearest tsconfig.json
+- All paths can be relative or absolute
+- No manual project/alias management required!
 
 Code style
 - Language: TypeScript strict (tsconfig.json: strict, esModuleInterop, commonjs, ES2020)
