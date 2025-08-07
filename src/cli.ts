@@ -283,9 +283,9 @@ program
       return;
     }
 
-    printTextAndExit("Configured projects:");
-    entries.forEach(([alias, path]) => {
-      console.log(`  ${alias} -> ${path}`);
+    console.log("Configured projects:");
+    entries.forEach(([alias, p]) => {
+      console.log(`  ${alias} -> ${p}`);
     });
   });
 

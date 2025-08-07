@@ -56,7 +56,7 @@ function filterSymbols(symbols, query) {
                 if (!result.includes(symbol)) {
                     result.push({
                         ...symbol,
-                        children: filteredChildren
+                        children: filteredChildren,
                     });
                 }
             }
@@ -302,7 +302,7 @@ class Daemon {
                 return {
                     ok: true,
                     message: "Workspace initialized",
-                    projectPath
+                    projectPath,
                 };
             }
             case "refresh": {
@@ -318,7 +318,7 @@ class Daemon {
                 const files = await glob("**/*.{ts,tsx}", {
                     cwd: projectPath,
                     ignore: ["node_modules/**", "dist/**", "build/**"],
-                    absolute: true
+                    absolute: true,
                 });
                 // Open first few files to trigger indexing
                 for (const file of files.slice(0, 5)) {
@@ -327,7 +327,7 @@ class Daemon {
                 return {
                     ok: true,
                     message: `Refreshed workspace with ${files.length} TypeScript files`,
-                    filesFound: files.length
+                    filesFound: files.length,
                 };
             }
             case "inspect:file": {

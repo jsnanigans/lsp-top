@@ -3,7 +3,7 @@
 Build/lint/test
 - Install: pnpm install
 - Build: pnpm run build (tsc)
-- Dev entry: node dist/cli.js <args> (pnpm run dev currently broken; use built CLI)
+- Dev entry: pnpm run dev -- <args> (or use node dist/cli.js <args>)
 - Typecheck: pnpm run build --noEmit false (tsc checks)
 - Lint: none configured (no eslint/prettier). Do not add.
 - Tests (root): none configured; use test-project for examples; manual CLI testing commands below

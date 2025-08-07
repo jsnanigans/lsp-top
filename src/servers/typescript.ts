@@ -293,21 +293,44 @@ export class TypeScriptLSP {
     );
   }
 
-  private async codeActions(uri: string, diagnostics: any[]): Promise<any[]> {
-    const range = {
-      start: { line: 0, character: 0 },
-      end: { line: 0, character: 0 },
-    };
+  private async codeActions(
+    uri: string,
+    diagnostics: any[],
+    kinds: string[],
+  ): Promise<any[]> {
+    let actions: any[] = [];
     try {
-      const actions = await this.client.sendRequest("textDocument/codeAction", {
+      const filePath = uri.replace(/^file:\/\//, "");
+      const content = fs.readFileSync(filePath, "utf-8");
+      const lines = content.split("\n");
+      const fullRange = {
+        start: { line: 0, character: 0 },
+        end: {
+          line: Math.max(0, lines.length - 1),
+          character: lines[lines.length - 1]?.length || 0,
+        },
+      };
+      const res = await this.client.sendRequest("textDocument/codeAction", {
         textDocument: { uri },
-        range,
-        context: { diagnostics },
+        range: fullRange,
+        context: { diagnostics, only: kinds },
       });
-      return Array.isArray(actions) ? actions : [];
-    } catch {
-      return [];
+      actions = Array.isArray(res) ? res : [];
+    } catch {}
+    const resolved: any[] = [];
+    for (const a of actions) {
+      if (a && (a.edit || a.command == null)) {
+        resolved.push(a);
+      } else {
+        try {
+          const ra = await this.client.sendRequest("codeAction/resolve", a);
+          resolved.push(ra || a);
+        } catch {
+          resolved.push(a);
+        }
+      }
     }
+    return resolved;
   }
 
   private async format(uri: string): Promise<any[]> {
@@ -345,21 +368,33 @@ export class TypeScriptLSP {
     const diagnostics = this.client.getDiagnosticsForUri(uri);
     const edits: { documentChanges?: any[]; changes?: Record<string, any[]> } =
       { changes: {} };
+    const actionsApplied: string[] = [];
 
     if (flags.organizeImports) {
       const oi = await this.organizeImports(uri);
-      if (oi.length)
+      if (oi.length) {
         edits.changes![uri] = (edits.changes![uri] || []).concat(oi);
+        actionsApplied.push("organizeImports");
+      }
     }
     if (flags.format) {
       const fmt = await this.format(uri);
-      if (fmt.length)
+      if (fmt.length) {
         edits.changes![uri] = (edits.changes![uri] || []).concat(fmt);
+        actionsApplied.push("format");
+      }
     }
     if (flags.fix || flags.fixDry) {
-      const actions = await this.codeActions(uri, diagnostics);
+      const kinds = [
+        "quickfix",
+        "source.fixAll",
+        "source.fixAll.ts",
+        "source.removeUnused",
+        "source.removeUnused.ts",
+      ];
+      const actions = await this.codeActions(uri, diagnostics, kinds);
       for (const a of actions) {
-        if (a.edit) {
+        if (a && a.edit) {
           if (a.edit.documentChanges) {
             edits.documentChanges = (edits.documentChanges || []).concat(
               a.edit.documentChanges,
@@ -372,6 +407,20 @@ export class TypeScriptLSP {
               );
             }
           }
+          if (a.title) actionsApplied.push(String(a.title));
+        }
+      }
+      if (flags.write && !flags.fixDry) {
+        for (const a of actions) {
+          if (a && a.command && !a.edit) {
+            try {
+              await this.client.sendRequest(
+                "workspace/executeCommand",
+                a.command,
+              );
+              if (a.title) actionsApplied.push(String(a.title));
+            } catch {}
+          }
         }
       }
     }
@@ -381,7 +430,7 @@ export class TypeScriptLSP {
       await new Promise((r) => setTimeout(r, 200));
     }
 
-    const res = { diagnostics, edits };
+    const res = { diagnostics, actionsApplied, edits };
     return res;
   }
 

@@ -37,7 +37,7 @@ lsp-top inspect myapp file src/service.ts
 # Get detailed diagnostics
 lsp-top run myapp diagnostics src/service.ts
 
-# Check with attempted fixes (currently not generating fixes)
+# Preview quick fixes (no writes)
 lsp-top inspect myapp file src/service.ts --fix-dry
 
 # Check all changed files in git
@@ -484,7 +484,7 @@ for file in $(git diff --name-only main...HEAD | grep '\.ts$'); do
 done
 ```
 
-## Known Limitations (v0.9)
+## Known Limitations (current)
 
 ### Currently Not Implemented
 - **Hover information** - `explore hover` command not yet available
@@ -496,9 +496,7 @@ done
 - **Complexity analysis** - `analyze complexity` command not yet available
 
 ### Known Issues
-- **`list` command** - Doesn't display projects due to premature exit
-- **Development mode** - `pnpm run dev` fails with `__dirname` error in ES modules
-- **Fix generation** - `--fix` flag doesn't produce code actions
+- **Development mode** - May vary by environment; use built CLI if issues arise
 
 ### Current Workarounds
 - Use `node dist/cli.js` instead of `pnpm run dev` for testing

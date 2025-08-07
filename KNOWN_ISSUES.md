@@ -5,26 +5,14 @@ This document tracks known bugs and limitations in LSP-Top v0.9.0.
 ## 🐛 Bugs
 
 ### 1. `list` Command Doesn't Display Projects
-**Issue**: The `list` command exits before displaying project list  
-**Location**: `src/cli.ts:286`  
-**Problem**: Calls `printTextAndExit()` which exits immediately, preventing subsequent `console.log` statements from executing  
-**Workaround**: Use `lsp-top configure --print` to see all projects  
-**Fix**: Remove `printTextAndExit` call and just use `console.log`
+Resolved in current build.
 
-### 2. Development Mode Broken (`pnpm run dev`)
-**Issue**: `__dirname is not defined in ES module scope` error  
-**Location**: `src/cli.ts:58`  
-**Problem**: TypeScript compiles to CommonJS but tsx runs as ES modules  
-**Workaround**: Use built version: `node dist/cli.js <command>`  
-**Fix**: Use `import.meta.url` or configure tsx to use CommonJS
 
-### 3. Code Fixes Not Generated
-**Issue**: `--fix` flag doesn't produce any code actions  
-**Problem**: Code actions request may not be implemented or incorrectly configured  
-**Affected Commands**: 
-- `lsp-top inspect <alias> file <path> --fix`
-- `lsp-top inspect <alias> file <path> --fix-dry`
-**Workaround**: Manually fix issues based on diagnostics
+### 2. Development Mode
+May still have inconsistencies depending on environment. Use built version if issues arise.
+
+### 3. Code Fixes
+Implemented: --fix plans quick fixes and fixAll; --fix-dry previews; use --write to apply. Availability depends on server responses.
 
 ## ⚠️ Limitations
 

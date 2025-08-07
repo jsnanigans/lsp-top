@@ -285,9 +285,9 @@ program
         console.log('No projects configured. Use "lsp-top init <alias> [path]" to add one.');
         return;
     }
-    (0, errors_1.printTextAndExit)("Configured projects:");
-    entries.forEach(([alias, path]) => {
-        console.log(`  ${alias} -> ${path}`);
+    console.log("Configured projects:");
+    entries.forEach(([alias, p]) => {
+        console.log(`  ${alias} -> ${p}`);
     });
 });
 program

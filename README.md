@@ -65,7 +65,7 @@ lsp-top inspect myapp file src/service.ts
 ### Project Management
 ```bash
 lsp-top init <alias> [path]          # Initialize project with alias
-lsp-top list                         # List all projects (⚠️ has display bug)
+lsp-top list                         # List all projects
 lsp-top remove <alias>               # Remove project alias
 lsp-top configure --set-alias <alias:path>  # Set alias
 lsp-top configure --print            # Show configuration (use this to see projects)
@@ -75,16 +75,16 @@ lsp-top configure --print            # Show configuration (use this to see proje
 ```bash
 # Check single file
 lsp-top inspect <alias> file <path> [options]
-  --fix                    # Apply available fixes (⚠️ not generating fixes currently)
-  --fix-dry               # Preview fixes without applying
-  --organize-imports      # Organize import statements (not implemented)
-  --format                # Format code (not implemented)
-  --write                 # Write changes to disk
+  --fix                    # Plan quick fixes and fixAll edits
+  --fix-dry               # Preview fixes without applying (no writes)
+  --organize-imports      # Organize import statements
+  --format                # Format code
+  --write                 # Write collected edits to disk; also executes command-only actions
 
 # Check changed files (git)
 lsp-top inspect <alias> changed [options]
   --staged                # Only staged files
-  --fix                   # Apply fixes to all files
+  --fix                   # Plan fixes for all files; use --write to apply
 
 # Examples
 lsp-top inspect myapp file src/service.ts
@@ -237,8 +237,8 @@ if len(preview["data"]["changes"]) < 10:
 pnpm run build
 
 # Run in development mode (⚠️ has ES module issues, use built version instead)
-# pnpm run dev -- <command>  # Currently broken
-node dist/cli.js <command>   # Use this instead
+pnpm run dev -- <command>
+node dist/cli.js <command>
 
 # Run tests
 pnpm test
@@ -262,7 +262,7 @@ See the [docs](./docs) directory for:
 - ✅ Project management (init, remove, configure)
 - ✅ Code inspection (diagnostics only, fixes not working)
 - ✅ Navigation commands: definition, references
-- ⚠️ Known issues: `list` command display, `--fix` not generating actions, dev mode broken
+- ⚠️ Known issues: dev mode may vary by environment
 
 ### v1.0 (Target)
 - [x] References navigation (completed)

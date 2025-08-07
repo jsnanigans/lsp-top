@@ -355,7 +355,7 @@ lsp-top init backend /path/to/backend
 List all projects.
 
 ```bash
-lsp-top list  # ⚠️ Known display issue; use configure --print instead
+lsp-top list
 ```
 
 #### `remove <alias>`
