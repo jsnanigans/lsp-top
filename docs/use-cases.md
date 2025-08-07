@@ -1,26 +1,29 @@
 # LSP-Top Use Cases
 
-## For Human Developers
+## Current Implementation (v0.9)
 
 ### 1. Command-Line Only Development
 
 **Scenario**: SSH'd into a remote server, no GUI available
 
 ```bash
-# Understand what a function does
-lsp-top explore hover src/api.ts:45:10
+# Initialize a project
+lsp-top init myapp /path/to/project
 
-# Find where it's defined
-lsp-top navigate def src/api.ts:45:10
+# Find where something is defined
+lsp-top run myapp definition src/api.ts:45:10
 
 # See all places it's used
-lsp-top navigate refs src/api.ts:45:10 --context 3
+lsp-top run myapp references src/api.ts:45:10
 
-# Fix issues before committing
-lsp-top analyze file src/api.ts --fix
+# Check for type errors
+lsp-top run myapp diagnostics src/api.ts
 
-# Safely rename across project
-lsp-top refactor rename src/old.ts:10:5 "betterName" --preview
+# Inspect file for issues
+lsp-top inspect myapp file src/api.ts
+
+# Get JSON output for scripting
+lsp-top run myapp definition src/api.ts:45:10 --json
 ```
 
 ### 2. Quick Code Verification
@@ -28,14 +31,20 @@ lsp-top refactor rename src/old.ts:10:5 "betterName" --preview
 **Scenario**: Just edited a file, want to verify it's correct
 
 ```bash
-# Check for type errors
-lsp-top analyze file src/service.ts
+# Check for type errors and issues
+lsp-top inspect myapp file src/service.ts
 
-# Verify imports are correct
-lsp-top refactor organize-imports src/service.ts
+# Get detailed diagnostics
+lsp-top run myapp diagnostics src/service.ts
 
-# Format code
-lsp-top refactor format src/service.ts
+# Check with attempted fixes (currently not generating fixes)
+lsp-top inspect myapp file src/service.ts --fix-dry
+
+# Check all changed files in git
+lsp-top inspect myapp changed
+
+# Check only staged files
+lsp-top inspect myapp changed --staged
 ```
 
 ### 3. Code Review from Terminal
@@ -43,14 +52,17 @@ lsp-top refactor format src/service.ts
 **Scenario**: Reviewing PR changes without IDE
 
 ```bash
-# Check all changed files
-lsp-top analyze changed --since main
+# Check all changed files for issues
+lsp-top inspect myapp changed
 
-# Understand what a changed function does
-lsp-top explore hover src/new-feature.ts:30:15
+# Find definition of a symbol
+lsp-top run myapp definition src/new-feature.ts:30:15
 
 # See where new function is called
-lsp-top navigate refs src/new-feature.ts:30:15
+lsp-top run myapp references src/new-feature.ts:30:15
+
+# Include the declaration in references
+lsp-top run myapp references src/new-feature.ts:30:15 --include-declaration
 ```
 
 ### 4. Exploring Unknown Codebase
@@ -58,36 +70,49 @@ lsp-top navigate refs src/new-feature.ts:30:15
 **Scenario**: New to a project, need to understand structure
 
 ```bash
-# See what's in a file
-lsp-top explore symbols src/core.ts --tree
+# Initialize the project first
+lsp-top init project ./
 
-# Find main entry points
-lsp-top navigate symbol "main" --kind function
+# Find where a class is defined
+lsp-top run project definition src/core.ts:10:5
 
-# Understand key interfaces
-lsp-top navigate symbol "Config" --kind interface
-lsp-top explore hover src/types.ts:ConfigInterface:1:1
+# Find all references to a class or function
+lsp-top run project references src/types.ts:15:10
 
-# Trace through call hierarchy
-lsp-top navigate calls src/app.ts:bootstrap:10:5 --direction out
+# Check files for type errors to understand constraints
+lsp-top run project diagnostics src/types.ts
+
+# Batch check multiple files
+for file in src/*.ts; do
+  echo "=== $file ==="
+  lsp-top run project diagnostics "$file"
+done
 ```
 
-### 5. Refactoring Without IDE
+### 5. Project Management
 
-**Scenario**: Need to clean up code from command line
+**Scenario**: Managing multiple projects
 
 ```bash
-# Find unused exports
-lsp-top analyze unused --type exports
+# Initialize multiple projects with aliases
+lsp-top init frontend ./packages/frontend
+lsp-top init backend ./packages/backend
+lsp-top init shared ./packages/shared
 
-# Rename across project
-lsp-top refactor rename src/utils.ts:oldFunc:5:10 "newFunc"
+# List all configured projects
+lsp-top configure --print
 
-# Extract repeated code
-lsp-top refactor extract-function src/long.ts:50-75 "handleUserData"
+# Remove a project
+lsp-top remove frontend
 
-# Move function to different file
-lsp-top refactor move src/utils.ts:helperFunc src/helpers.ts
+# Check project configuration
+lsp-top diagnose backend
+
+# Start the daemon for faster responses
+lsp-top start-server
+
+# Check daemon status
+lsp-top metrics
 ```
 
 ## For AI Agents
@@ -101,7 +126,7 @@ lsp-top refactor move src/utils.ts:helperFunc src/helpers.ts
 import subprocess
 import json
 
-def analyze_project():
+def analyze_project(alias):
     # Get all TypeScript files
     files = subprocess.run(
         ["find", ".", "-name", "*.ts"],
@@ -111,14 +136,14 @@ def analyze_project():
 
     issues = []
     for file in files:
-        # Check each file
+        # Check each file for diagnostics
         result = subprocess.run(
-            ["lsp-top", "analyze", "file", file, "--json"],
+            ["lsp-top", "run", alias, "diagnostics", file, "--json"],
             capture_output=True,
             text=True
         )
         data = json.loads(result.stdout)
-        if data["diagnostics"]:
+        if data.get("diagnostics"):
             issues.append({
                 "file": file,
                 "issues": data["diagnostics"]
@@ -132,93 +157,131 @@ def analyze_project():
 **Use Case**: AI understanding code relationships
 
 ```python
-def understand_function(file_pos):
-    # Get function info
-    hover = run_lsp_top(f"explore hover {file_pos} --json")
-
+def understand_function(alias, file_pos):
+    # Find where it's defined
+    definition = run_command(
+        f"lsp-top run {alias} definition {file_pos} --json"
+    )
+    
     # Find all usages
-    refs = run_lsp_top(f"navigate refs {file_pos} --json")
-
-    # Get implementation details
-    impl = run_lsp_top(f"navigate impl {file_pos} --json")
+    refs = run_command(
+        f"lsp-top run {alias} references {file_pos} --json"
+    )
+    
+    # Get diagnostics for context
+    file_path = file_pos.split(':')[0]
+    diagnostics = run_command(
+        f"lsp-top run {alias} diagnostics {file_path} --json"
+    )
 
     return {
-        "documentation": hover["data"]["contents"],
-        "references": refs["data"]["locations"],
-        "implementations": impl["data"]["locations"]
+        "definition": json.loads(definition),
+        "references": json.loads(refs),
+        "issues": json.loads(diagnostics).get("diagnostics", [])
     }
 ```
 
-### 3. Automated Refactoring
+### 3. Batch Processing
 
-**Use Case**: AI performing safe code transformations
+**Use Case**: AI processing multiple files
 
 ```python
-def safe_rename(old_pos, new_name):
-    # Preview changes
-    preview = run_lsp_top(
-        f"refactor rename {old_pos} {new_name} --preview --json"
-    )
-
-    # Analyze impact
-    affected_files = len(preview["data"]["documentChanges"])
-
-    if affected_files < 10:  # Safe threshold
-        # Apply rename
-        result = run_lsp_top(
-            f"refactor rename {old_pos} {new_name} --json"
-        )
-        return result
-    else:
-        return {"error": "Too many files affected", "count": affected_files}
+def batch_check_files(alias, file_patterns):
+    import glob
+    
+    results = {}
+    
+    for pattern in file_patterns:
+        files = glob.glob(pattern, recursive=True)
+        
+        for file in files:
+            # Get diagnostics
+            result = subprocess.run(
+                ["lsp-top", "run", alias, "diagnostics", file, "--json"],
+                capture_output=True,
+                text=True
+            )
+            
+            data = json.loads(result.stdout)
+            if data.get("diagnostics"):
+                results[file] = {
+                    "errors": [d for d in data["diagnostics"] if d["severity"] == 1],
+                    "warnings": [d for d in data["diagnostics"] if d["severity"] == 2]
+                }
+    
+    return results
 ```
 
-### 4. Code Generation Assistant
+### 4. Code Verification
 
-**Use Case**: AI generating code with context
+**Use Case**: AI verifying code changes
 
 ```python
-def generate_implementation(interface_file):
-    # Find interface definition
-    symbols = run_lsp_top(
-        f"explore symbols {interface_file} --kind interface --json"
+def verify_changes(alias):
+    # Check changed files
+    result = subprocess.run(
+        ["lsp-top", "inspect", alias, "changed", "--json"],
+        capture_output=True,
+        text=True
     )
-
-    for symbol in symbols["data"]:
-        # Get interface details
-        hover = run_lsp_top(
-            f"explore hover {interface_file}:{symbol['line']}:{symbol['col']} --json"
-        )
-
-        # Generate implementation based on interface
-        implementation = generate_from_interface(hover["data"])
-
-        # Verify generated code
-        verify_result = verify_implementation(implementation)
+    
+    data = json.loads(result.stdout)
+    
+    # Analyze each diagnostic
+    critical_issues = []
+    for diagnostic in data.get("diagnostics", []):
+        if diagnostic["severity"] == 1:  # Error
+            critical_issues.append({
+                "file": diagnostic.get("file"),
+                "message": diagnostic["message"],
+                "line": diagnostic["range"]["start"]["line"]
+            })
+    
+    return {
+        "has_errors": len(critical_issues) > 0,
+        "critical_issues": critical_issues
+    }
 ```
 
-### 5. Continuous Code Quality
+### 5. Cross-Reference Analysis
 
-**Use Case**: AI monitoring code quality
+**Use Case**: AI understanding code dependencies
 
 ```python
-def monitor_code_quality():
-    while True:
-        # Check changed files
-        changed = run_lsp_top("analyze changed --json")
-
-        for file in changed["data"]["files"]:
-            # Analyze complexity
-            complexity = run_lsp_top(f"analyze complexity {file} --json")
-
-            if complexity["data"]["cyclomatic"] > 10:
-                # Suggest refactoring
-                suggest_refactor(file, complexity)
-
-            # Check for unused code
-            unused = run_lsp_top(f"analyze unused --file {file} --json")
-            if unused["data"]["items"]:
-                cleanup_unused(unused["data"]["items"])
+def analyze_dependencies(alias, entry_point):
+    """Trace dependencies from an entry point"""
+    
+    visited = set()
+    to_visit = [entry_point]
+    dependencies = {}
+    
+    while to_visit:
+        current = to_visit.pop(0)
+        if current in visited:
+            continue
+            
+        visited.add(current)
+        
+        # Find all references in this file
+        result = subprocess.run(
+            ["lsp-top", "run", alias, "references", current, "--json"],
+            capture_output=True,
+            text=True
+        )
+        
+        refs = json.loads(result.stdout)
+        
+        # Track dependencies
+        dependencies[current] = refs
+        
+        # Add new files to visit
+        for ref in refs:
+            file_path = ref["uri"].replace("file://", "")
+            location = f"{file_path}:{ref['range']['start']['line']}:{ref['range']['start']['character']}"
+            if location not in visited:
+                to_visit.append(location)
+    
+    return dependencies
 ```
 
 ## Integration Patterns
@@ -229,77 +292,107 @@ def monitor_code_quality():
 #!/bin/bash
 # pre-commit hook
 
-# Check all staged files
-lsp-top analyze changed --staged --json > analysis.json
+# Ensure daemon is running
+lsp-top start-server 2>/dev/null || true
 
-if [ $(jq '.data.errorCount' analysis.json) -gt 0 ]; then
+# Check all staged files
+lsp-top inspect myproject changed --staged --json > analysis.json
+
+# Count errors
+ERROR_COUNT=$(cat analysis.json | jq '[.diagnostics[] | select(.severity == 1)] | length')
+
+if [ "$ERROR_COUNT" -gt 0 ]; then
     echo "Errors found in staged files:"
-    lsp-top analyze changed --staged
+    lsp-top inspect myproject changed --staged
     exit 1
 fi
 
-# Auto-fix issues
-lsp-top analyze changed --staged --fix
-
-# Organize imports
-for file in $(git diff --cached --name-only | grep '\.ts$'); do
-    lsp-top refactor organize-imports "$file"
-done
+echo "✓ No errors found in staged files"
 ```
 
 ### 2. CI/CD Pipeline
 
 ```yaml
 # GitHub Actions example
+- name: Setup LSP-Top
+  run: |
+    npm install -g lsp-top
+    lsp-top init project .
+    lsp-top start-server
+
 - name: Code Quality Check
   run: |
-    lsp-top analyze changed --since ${{ github.base_ref }} --json > analysis.json
-
-    ERROR_COUNT=$(jq '.data.errorCount' analysis.json)
-    if [ $ERROR_COUNT -gt 0 ]; then
+    # Check all TypeScript files
+    for file in $(find src -name "*.ts"); do
+      lsp-top run project diagnostics "$file" --json >> diagnostics.jsonl
+    done
+    
+    # Count errors
+    ERROR_COUNT=$(cat diagnostics.jsonl | jq -s '[.[] | .diagnostics[] | select(.severity == 1)] | length')
+    
+    if [ "$ERROR_COUNT" -gt 0 ]; then
       echo "::error::Found $ERROR_COUNT errors"
-      lsp-top analyze changed --since ${{ github.base_ref }}
+      cat diagnostics.jsonl | jq -r '.diagnostics[] | select(.severity == 1) | "::error file=\(.file),line=\(.range.start.line)::\(.message)"'
       exit 1
     fi
-
-- name: Check Unused Code
-  run: |
-    lsp-top analyze unused --type exports --json > unused.json
-    UNUSED_COUNT=$(jq '.data.items | length' unused.json)
-    echo "::warning::Found $UNUSED_COUNT unused exports"
 ```
 
 ### 3. Editor Integration
 
 ```vim
-" Vim integration
-function! LspTopHover()
+" Vim integration for current implementation
+function! LspTopDefinition()
   let pos = line('.') . ':' . col('.')
-  let file = expand('%:p')
-  let cmd = 'lsp-top explore hover ' . file . ':' . pos
+  let file = expand('%:.')
+  let cmd = 'lsp-top run myproject definition ' . file . ':' . pos . ' --json'
+  let result = system(cmd)
+  let data = json_decode(result)
+  if len(data) > 0
+    let uri = data[0]['uri']
+    let file = substitute(uri, 'file://', '', '')
+    let line = data[0]['range']['start']['line'] + 1
+    execute 'edit +' . line . ' ' . file
+  endif
+endfunction
+
+function! LspTopReferences()
+  let pos = line('.') . ':' . col('.')
+  let file = expand('%:.')
+  let cmd = 'lsp-top run myproject references ' . file . ':' . pos
   let result = system(cmd)
   echo result
 endfunction
 
-nnoremap K :call LspTopHover()<CR>
+nnoremap gd :call LspTopDefinition()<CR>
+nnoremap gr :call LspTopReferences()<CR>
 ```
 
 ### 4. Shell Aliases
 
 ```bash
-# Useful aliases
-alias lsp-def='lsp-top navigate def'
-alias lsp-refs='lsp-top navigate refs'
-alias lsp-hover='lsp-top explore hover'
-alias lsp-check='lsp-top analyze file'
-alias lsp-fix='lsp-top analyze file --fix'
+# Useful aliases for current implementation
+alias lsp-def='lsp-top run $(basename $PWD) definition'
+alias lsp-refs='lsp-top run $(basename $PWD) references'
+alias lsp-check='lsp-top run $(basename $PWD) diagnostics'
+alias lsp-inspect='lsp-top inspect $(basename $PWD) file'
 
 # Quick navigation function
 function goto() {
-  local result=$(lsp-top navigate def "$1" --json | jq -r '.data.location.uri')
-  local file=${result#file://}
-  local line=$(lsp-top navigate def "$1" --json | jq -r '.data.location.range.start.line')
-  vim "+$((line + 1))" "$file"
+  local project=$(basename $PWD)
+  local result=$(lsp-top run $project definition "$1" --json)
+  if [ ! -z "$result" ] && [ "$result" != "[]" ]; then
+    local file=$(echo $result | jq -r '.[0].uri' | sed 's|file://||')
+    local line=$(echo $result | jq -r '.[0].range.start.line')
+    vim "+$((line + 1))" "$file"
+  else
+    echo "No definition found"
+  fi
+}
+
+# Check current file
+function lsp-current() {
+  local project=$(basename $PWD)
+  lsp-top run $project diagnostics "$1"
 }
 ```
 
@@ -329,48 +422,87 @@ function goto() {
 # SSH into production server
 ssh prod-server
 
-# Navigate to error location from logs
-lsp-top navigate def src/api.ts:processOrder:45:10
+# Initialize the project
+lsp-top init prod /app
 
-# Understand the function
-lsp-top explore hover src/api.ts:45:10
+# Start daemon for faster responses
+lsp-top start-server
+
+# Navigate to error location from logs
+lsp-top run prod definition src/api.ts:45:10
 
 # Find all calls to this function
-lsp-top navigate refs src/api.ts:45:10 --context 5
+lsp-top run prod references src/api.ts:45:10
+
+# Check for type errors in the file
+lsp-top run prod diagnostics src/api.ts
 
 # Check for recent changes
 git log -p src/api.ts | head -50
 ```
 
-### 2. Large-Scale Refactoring
+### 2. Finding Usage Patterns
 
 ```bash
-# Find all uses of deprecated API
-lsp-top navigate refs src/deprecated.ts:oldAPI:10:5 > usage.txt
+# Find all uses of a class or function
+lsp-top run myproject references src/utils.ts:10:5 --json > usage.json
 
-# Generate migration script
-for location in $(cat usage.txt | grep -o '[^:]*:[0-9]*:[0-9]*'); do
-  echo "Migrating $location"
-  lsp-top refactor codeaction "$location" --apply migrate-to-new-api
+# Parse and analyze usage
+cat usage.json | jq -r '.[] | "\(.uri):\(.range.start.line)"' | while read location; do
+  file=$(echo $location | cut -d: -f1 | sed 's|file://||')
+  line=$(echo $location | cut -d: -f2)
+  echo "Found usage in $file at line $((line + 1))"
+  sed -n "$((line)),$((line + 2))p" "$file"
 done
 ```
 
 ### 3. Code Review Automation
 
 ```bash
-# AI agent reviewing PR
-for file in $(git diff --name-only main...HEAD | grep '\.ts$'); do
-  # Check complexity
-  complexity=$(lsp-top analyze complexity "$file" --json | jq '.data.max')
-  if [ "$complexity" -gt 15 ]; then
-    echo "::warning file=$file::High complexity: $complexity"
-  fi
+# Check all changed files in a PR
+PROJECT_ALIAS="myproject"
 
-  # Check for common issues
-  lsp-top analyze file "$file" --json | \
-    jq -r '.data.diagnostics[] |
-    "::warning file=\(.file),line=\(.range.start.line)::\(.message)"'
+# Get changed TypeScript files
+for file in $(git diff --name-only main...HEAD | grep '\.ts$'); do
+  echo "Checking $file..."
+  
+  # Get diagnostics
+  lsp-top run $PROJECT_ALIAS diagnostics "$file" --json > "$file.diagnostics.json"
+  
+  # Count issues by severity
+  ERRORS=$(cat "$file.diagnostics.json" | jq '[.diagnostics[] | select(.severity == 1)] | length')
+  WARNINGS=$(cat "$file.diagnostics.json" | jq '[.diagnostics[] | select(.severity == 2)] | length')
+  
+  if [ "$ERRORS" -gt 0 ]; then
+    echo "  ❌ $ERRORS errors found"
+    cat "$file.diagnostics.json" | jq -r '.diagnostics[] | select(.severity == 1) | "    Line \(.range.start.line): \(.message)"'
+  fi
+  
+  if [ "$WARNINGS" -gt 0 ]; then
+    echo "  ⚠️  $WARNINGS warnings found"
+  fi
 done
 ```
 
-These use cases demonstrate how `lsp-top` bridges the gap between command-line tools and IDE functionality, enabling both human developers and AI agents to work effectively with codebases in ways that weren't previously possible.
+## Known Limitations (v0.9)
+
+### Currently Not Implemented
+- **Hover information** - `explore hover` command not yet available
+- **Symbol search** - `navigate symbol` command not yet available  
+- **Type definitions** - `navigate type` command not yet available
+- **Implementations** - `navigate impl` command not yet available
+- **Refactoring** - `refactor` commands not yet available
+- **Code actions** - Quick fixes not being generated despite `--fix` flag
+- **Complexity analysis** - `analyze complexity` command not yet available
+
+### Known Issues
+- **`list` command** - Doesn't display projects due to premature exit
+- **Development mode** - `pnpm run dev` fails with `__dirname` error in ES modules
+- **Fix generation** - `--fix` flag doesn't produce code actions
+
+### Current Workarounds
+- Use `node dist/cli.js` instead of `pnpm run dev` for testing
+- Use `configure --print` to see projects instead of `list`
+- Check diagnostics manually instead of relying on auto-fixes
+
+These use cases demonstrate the current capabilities of `lsp-top` v0.9. While some advanced features are still in development, the tool already provides valuable command-line access to LSP functionality for both human developers and AI agents.

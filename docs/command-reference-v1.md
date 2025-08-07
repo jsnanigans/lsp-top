@@ -1,4 +1,4 @@
-# LSP-Top Command Reference v1
+# LSP-Top Command Reference (Current v0.9)
 
 ## Overview
 
@@ -18,20 +18,20 @@ lsp-top [global-options] <command> <subcommand> [options] [arguments]
 - `--log-level <level>` - Set log level (error|warn|info|debug|trace)
 - `--trace <flags>` - Enable trace flags for debugging
 
-## Core Commands
+## Core Commands (Working)
 
 ### 1. Navigate - Code Navigation
 
-#### `navigate def <file:line:col>`
+#### `run <alias> definition <file:line:col>` ✅ IMPLEMENTED
 
 Jump to definition of symbol at position.
 
 ```bash
 # Go to definition
-lsp-top navigate def src/service.ts:10:15
+lsp-top run <alias> definition src/service.ts:10:15
 
 # With JSON output
-lsp-top navigate def src/service.ts:10:15 --json
+lsp-top run <alias> definition src/service.ts:10:15 --json
 ```
 
 Output includes:
@@ -40,18 +40,16 @@ Output includes:
 - Preview of definition with context
 - File path and range
 
-#### `navigate refs <file:line:col> [options]` ✅ IMPLEMENTED
+#### `run <alias> references <file:line:col> [options]` ✅ IMPLEMENTED
 
 Find all references to symbol.
 
-**Current Implementation:**
-
 ```bash
-# Using run command (current)
-lsp-top run <alias> references <file:line:col> [--include-declaration]
+# Find references
+lsp-top run <alias> references src/user.ts:15:10
 
-# Example
-lsp-top run myapp references src/user.ts:15:10 --include-declaration
+# Include the declaration
+lsp-top run <alias> references src/user.ts:15:10 --include-declaration
 ```
 
 **Future v1.0 Interface:**
@@ -71,6 +69,18 @@ lsp-top navigate refs src/user.ts:15:10 --context 3
 
 # Grouped by file (future)
 lsp-top navigate refs src/api.ts:20:5 --group-by-file
+```
+
+#### `run <alias> diagnostics <file>` ✅ IMPLEMENTED
+
+Get diagnostics for a file.
+
+```bash
+# Get diagnostics for a file
+lsp-top run <alias> diagnostics src/service.ts
+
+# JSON output
+lsp-top run <alias> diagnostics src/service.ts --json
 ```
 
 #### `navigate type <file:line:col>`
@@ -113,7 +123,7 @@ lsp-top navigate symbol "process" --scope file src/service.ts
 lsp-top navigate symbol "getUserById" --exact
 ```
 
-### 2. Explore - Code Understanding
+### 2. Explore - Code Understanding (Planned)
 
 #### `explore hover <file:line:col>`
 
@@ -175,7 +185,7 @@ Show document outline with all symbols.
 lsp-top explore outline src/service.ts
 ```
 
-### 3. Analyze - Code Quality
+### 3. Analyze - Code Quality (Planned)
 
 #### `analyze file <file> [options]`
 
@@ -238,7 +248,7 @@ lsp-top analyze unused --type exports
 lsp-top analyze unused --type all
 ```
 
-### 4. Refactor - Code Transformation
+### 4. Refactor - Code Transformation (Planned)
 
 #### `refactor rename <file:line:col> <newName> [options]`
 
@@ -303,7 +313,7 @@ lsp-top refactor format src/ugly.ts
 lsp-top refactor format src/code.ts --check
 ```
 
-### 5. Edit - Direct Editing
+### 5. Edit - Direct Editing (Experimental)
 
 #### `edit apply <file>`
 
@@ -326,60 +336,60 @@ Create edit plan from changes.
 lsp-top edit plan src/file.ts > plan.json
 ```
 
-### 6. Project Management
+### 6. Project Management (Working)
 
-#### `project init <alias> [path]`
+#### `init <alias> [path]`
 
 Initialize project with alias.
 
 ```bash
 # Init current directory
-lsp-top project init myapp
+lsp-top init myapp
 
 # Init specific path
-lsp-top project init backend /path/to/backend
+lsp-top init backend /path/to/backend
 ```
 
-#### `project list`
+#### `list`
 
 List all projects.
 
 ```bash
-lsp-top project list
+lsp-top list  # ⚠️ Known display issue; use configure --print instead
 ```
 
-#### `project remove <alias>`
+#### `remove <alias>`
 
 Remove project alias.
 
 ```bash
-lsp-top project remove myapp
+lsp-top remove myapp
 ```
 
-### 7. Daemon Management
+### 7. Daemon Management (Working)
 
-#### `daemon start`
+#### `start-server`
 
 Start the LSP daemon.
 
 ```bash
-lsp-top daemon start
+lsp-top start-server
 ```
 
-#### `daemon stop`
+#### `stop-server`
 
 Stop the daemon.
 
 ```bash
-lsp-top daemon stop
+lsp-top stop-server
 ```
 
-#### `daemon status`
+#### `metrics`
 
 Check daemon status.
 
 ```bash
-lsp-top daemon status
+lsp-top metrics
 ```
 
 ## Output Formats

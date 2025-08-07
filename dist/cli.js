@@ -532,6 +532,7 @@ program
     .option("--log-level <level>", "Set log level (error|warn|info|debug|trace)")
     .option("--trace <flags>", "Comma-separated trace flags")
     .option("--include-declaration", "Include declaration in references (for references action)")
+    .option("--query <query>", "Filter query for documentSymbols action")
     .action(async (alias, action, args, options) => {
     const level = (options.logLevel
         ? String(options.logLevel)
@@ -555,10 +556,14 @@ program
         }
     }
     const client = net.connect(SOCKET_PATH, () => {
-        // For references action, add flags as second argument
-        const finalArgs = action === "references" && options.includeDeclaration
-            ? [...args, JSON.stringify({ includeDeclaration: true })]
-            : args;
+        // Build flags for actions that support them
+        let finalArgs = args;
+        if (action === "references" && options.includeDeclaration) {
+            finalArgs = [...args, JSON.stringify({ includeDeclaration: true })];
+        }
+        else if (action === "documentSymbols" && options.query) {
+            finalArgs = [...args, JSON.stringify({ query: options.query })];
+        }
         const request = {
             alias,
             action,

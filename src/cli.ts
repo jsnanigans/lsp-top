@@ -587,6 +587,7 @@ program
     "--include-declaration",
     "Include declaration in references (for references action)",
   )
+  .option("--query <query>", "Filter query for documentSymbols action")
   .action(async (alias: string, action: string, args: string[], options) => {
     const level = (
       options.logLevel
@@ -616,11 +617,14 @@ program
       }
     }
     const client = net.connect(SOCKET_PATH, () => {
-      // For references action, add flags as second argument
-      const finalArgs =
-        action === "references" && options.includeDeclaration
-          ? [...args, JSON.stringify({ includeDeclaration: true })]
-          : args;
+      // Build flags for actions that support them
+      let finalArgs = args;
+
+      if (action === "references" && options.includeDeclaration) {
+        finalArgs = [...args, JSON.stringify({ includeDeclaration: true })];
+      } else if (action === "documentSymbols" && options.query) {
+        finalArgs = [...args, JSON.stringify({ query: options.query })];
+      }
 
       const request = {
         alias,

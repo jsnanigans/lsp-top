@@ -37,20 +37,20 @@ Requirements:
 # 1) Initialize a project
 lsp-top init myapp ~/projects/myapp
 
-# 2) Start the daemon
+# 2) Start the daemon (optional, for faster responses)
 lsp-top start-server
 
-# 3) Navigate code
+# 3) Navigate code - find definitions
 lsp-top run myapp definition src/index.ts:10:5
 
-# 4) Check for issues
-lsp-top inspect myapp file src/service.ts --fix
+# 4) Find all references
+lsp-top run myapp references src/index.ts:10:5
 
-# 5) Understand code (coming in v1.0)
-lsp-top explore hover src/api.ts:30:15
+# 5) Check for type errors
+lsp-top run myapp diagnostics src/service.ts
 
-# 6) Refactor safely (coming in v1.0)
-lsp-top refactor rename src/old.ts:10:5 "newName" --preview
+# 6) Inspect files for issues
+lsp-top inspect myapp file src/service.ts
 ```
 
 ## Command Reference
@@ -65,20 +65,20 @@ lsp-top refactor rename src/old.ts:10:5 "newName" --preview
 ### Project Management
 ```bash
 lsp-top init <alias> [path]          # Initialize project with alias
-lsp-top list                         # List all projects
+lsp-top list                         # List all projects (⚠️ has display bug)
 lsp-top remove <alias>               # Remove project alias
 lsp-top configure --set-alias <alias:path>  # Set alias
-lsp-top configure --print            # Show configuration
+lsp-top configure --print            # Show configuration (use this to see projects)
 ```
 
 ### Code Inspection
 ```bash
 # Check single file
 lsp-top inspect <alias> file <path> [options]
-  --fix                    # Apply available fixes
+  --fix                    # Apply available fixes (⚠️ not generating fixes currently)
   --fix-dry               # Preview fixes without applying
-  --organize-imports      # Organize import statements
-  --format                # Format code
+  --organize-imports      # Organize import statements (not implemented)
+  --format                # Format code (not implemented)
   --write                 # Write changes to disk
 
 # Check changed files (git)
@@ -87,11 +87,11 @@ lsp-top inspect <alias> changed [options]
   --fix                   # Apply fixes to all files
 
 # Examples
-lsp-top inspect myapp file src/service.ts --fix --write
-lsp-top inspect myapp changed --staged --fix
+lsp-top inspect myapp file src/service.ts
+lsp-top inspect myapp changed --staged
 ```
 
-### Code Navigation (Current)
+### Code Navigation (Working)
 ```bash
 lsp-top run <alias> definition <file:line:col>
 lsp-top run <alias> references <file:line:col> [--include-declaration]
@@ -101,6 +101,9 @@ lsp-top run <alias> diagnostics <file>
 lsp-top run myapp definition src/api.ts:30:15
 lsp-top run myapp references src/user.ts:10:5 --include-declaration
 lsp-top run myapp diagnostics src/service.ts
+
+# JSON output for scripting
+lsp-top run myapp definition src/api.ts:30:15 --json
 ```
 
 ### Code Editing
@@ -230,11 +233,12 @@ if len(preview["data"]["changes"]) < 10:
 ## Development
 
 ```bash
-# Run in development mode
-pnpm run dev -- <command>
-
-# Build
+# Build the project
 pnpm run build
+
+# Run in development mode (⚠️ has ES module issues, use built version instead)
+# pnpm run dev -- <command>  # Currently broken
+node dist/cli.js <command>   # Use this instead
 
 # Run tests
 pnpm test
@@ -255,9 +259,10 @@ See the [docs](./docs) directory for:
 
 ### v0.9.0 (Current)
 - ✅ Basic infrastructure (daemon, LSP client)
-- ✅ Project management
-- ✅ Code inspection (diagnostics, fixes)
+- ✅ Project management (init, remove, configure)
+- ✅ Code inspection (diagnostics only, fixes not working)
 - ✅ Navigation commands: definition, references
+- ⚠️ Known issues: `list` command display, `--fix` not generating actions, dev mode broken
 
 ### v1.0 (Target)
 - [x] References navigation (completed)

@@ -3,12 +3,22 @@
 Build/lint/test
 - Install: pnpm install
 - Build: pnpm run build (tsc)
-- Dev entry: pnpm run dev -- <args> (tsx src/cli.ts)
+- Dev entry: node dist/cli.js <args> (pnpm run dev currently broken; use built CLI)
 - Typecheck: pnpm run build --noEmit false (tsc checks)
 - Lint: none configured (no eslint/prettier). Do not add.
-- Tests (root): none configured; use test-project for examples
+- Tests (root): none configured; use test-project for examples; manual CLI testing commands below
 - Tests (test-project): pnpm --filter test-project test
 - Single test (jest in test-project): pnpm --filter test-project jest path/to/test.ts -t "test name"
+
+Manual CLI testing:
+- Start daemon: node dist/cli.js start-server
+- Init test project: node dist/cli.js init test ./test-project
+- Definition: node dist/cli.js run test definition src/calculator.ts:11:3
+- References: node dist/cli.js run test references src/calculator.ts:4:14
+- Diagnostics: node dist/cli.js run test diagnostics src/index.ts
+- Inspect: node dist/cli.js inspect test file src/index.ts
+- Config: node dist/cli.js configure --print
+- Metrics: node dist/cli.js metrics
 
 Code style
 - Language: TypeScript strict (tsconfig.json: strict, esModuleInterop, commonjs, ES2020)

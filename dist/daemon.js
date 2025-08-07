@@ -41,6 +41,29 @@ const logger_1 = require("./logger");
 const config_1 = require("./config");
 const path_utils_1 = require("./path-utils");
 const SOCKET_PATH = "/tmp/lsp-top.sock";
+function filterSymbols(symbols, query) {
+    const result = [];
+    for (const symbol of symbols) {
+        // Check if symbol name matches query
+        if (symbol.name && symbol.name.toLowerCase().includes(query)) {
+            result.push(symbol);
+        }
+        // Recursively filter children if they exist
+        if (symbol.children && Array.isArray(symbol.children)) {
+            const filteredChildren = filterSymbols(symbol.children, query);
+            if (filteredChildren.length > 0) {
+                // Include parent if any children match
+                if (!result.includes(symbol)) {
+                    result.push({
+                        ...symbol,
+                        children: filteredChildren
+                    });
+                }
+            }
+        }
+    }
+    return result;
+}
 const PID_FILE = "/tmp/lsp-top.pid";
 class Daemon {
     constructor() {
@@ -232,7 +255,14 @@ class Daemon {
                     throw new Error("File path required");
                 }
                 const filePath = (0, path_utils_1.resolveProjectPath)(projectPath, args[0]);
-                return await lsp.getDocumentSymbols(filePath);
+                const flags = JSON.parse(args[1] || "{}");
+                const symbols = await lsp.getDocumentSymbols(filePath);
+                // Filter symbols if query is provided
+                if (flags.query) {
+                    const query = String(flags.query).toLowerCase();
+                    return filterSymbols(symbols, query);
+                }
+                return symbols;
             }
             case "workspaceSymbols": {
                 const query = args[0] || "";
@@ -250,6 +280,55 @@ class Daemon {
                     throw new Error("Invalid position format. Use file.ts:line:column");
                 }
                 return await lsp.getHover(filePath, line, char);
+            }
+            case "initialize": {
+                // Force re-initialization of the workspace
+                (0, logger_1.log)("info", "Initializing workspace", { projectPath });
+                // Stop existing LSP if it exists
+                if (this.lspInstances.has(alias)) {
+                    const existing = this.lspInstances.get(alias);
+                    await existing.stop();
+                    this.lspInstances.delete(alias);
+                }
+                // Create new session with initialization
+                const newLsp = new typescript_1.TypeScriptLSP(projectPath);
+                await newLsp.start();
+                this.lspInstances.set(alias, newLsp);
+                // Trigger workspace indexing by opening tsconfig if it exists
+                const tsconfigPath = require("path").join(projectPath, "tsconfig.json");
+                if (fs.existsSync(tsconfigPath)) {
+                    await newLsp.getDocumentSymbols(tsconfigPath);
+                }
+                return {
+                    ok: true,
+                    message: "Workspace initialized",
+                    projectPath
+                };
+            }
+            case "refresh": {
+                // Refresh the LSP session without full re-initialization
+                (0, logger_1.log)("info", "Refreshing LSP session", { projectPath });
+                if (!this.lspInstances.has(alias)) {
+                    throw new Error(`No active session for project '${alias}'`);
+                }
+                // Trigger workspace re-indexing
+                const lspSession = this.lspInstances.get(alias);
+                // Find and open all TypeScript files to refresh the workspace
+                const { glob } = await Promise.resolve().then(() => __importStar(require("glob")));
+                const files = await glob("**/*.{ts,tsx}", {
+                    cwd: projectPath,
+                    ignore: ["node_modules/**", "dist/**", "build/**"],
+                    absolute: true
+                });
+                // Open first few files to trigger indexing
+                for (const file of files.slice(0, 5)) {
+                    await lspSession.getDocumentSymbols(file);
+                }
+                return {
+                    ok: true,
+                    message: `Refreshed workspace with ${files.length} TypeScript files`,
+                    filesFound: files.length
+                };
             }
             case "inspect:file": {
                 if (!args[0])
