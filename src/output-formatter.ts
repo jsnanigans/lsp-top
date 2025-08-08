@@ -10,14 +10,40 @@ interface Location {
 }
 
 /**
- * Format a file path for display
+ * Format a file path for display with better visual hierarchy
  */
 function formatFilePath(uri: string, projectRoot?: string): string {
   const filePath = uri.replace("file://", "");
   if (projectRoot) {
-    return path.relative(projectRoot, filePath) || filePath;
+    const relative = path.relative(projectRoot, filePath);
+    // If file is outside project, show full path
+    if (relative.startsWith("..")) {
+      return filePath;
+    }
+    return relative || filePath;
   }
   return filePath;
+}
+
+/**
+ * Get file extension and infer file type
+ */
+function getFileType(filePath: string): string {
+  const ext = path.extname(filePath).toLowerCase();
+  const typeMap: { [key: string]: string } = {
+    ".ts": "TypeScript",
+    ".tsx": "TypeScript React",
+    ".js": "JavaScript",
+    ".jsx": "JavaScript React",
+    ".json": "JSON",
+    ".md": "Markdown",
+    ".css": "CSS",
+    ".scss": "SCSS",
+    ".html": "HTML",
+    ".yml": "YAML",
+    ".yaml": "YAML",
+  };
+  return typeMap[ext] || ext.slice(1).toUpperCase() || "File";
 }
 
 /**
@@ -35,11 +61,14 @@ function getFileContext(
     const end = Math.min(lines.length, line + contextLines + 1);
 
     const result: string[] = [];
+    const maxLineNumWidth = String(end).length;
+    
     for (let i = start; i < end; i++) {
       const lineNum = i + 1;
       const isTarget = lineNum === line + 1;
-      const prefix = isTarget ? ">" : " ";
-      result.push(`${prefix} ${String(lineNum).padStart(4)} │ ${lines[i]}`);
+      const prefix = isTarget ? "→" : " ";
+      const lineNumStr = String(lineNum).padStart(maxLineNumWidth);
+      result.push(`${prefix} ${lineNumStr} │ ${lines[i]}`);
     }
     return result;
   } catch {
@@ -54,12 +83,19 @@ function formatLocation(
   location: Location,
   context?: any,
   showContext: boolean = true,
+  showFileType: boolean = false,
 ): string {
   const filePath = formatFilePath(location.uri, context?.projectRoot);
   const line = location.range.start.line + 1;
   const col = location.range.start.character + 1;
+  const fileType = showFileType ? getFileType(filePath) : "";
 
-  let result = `${filePath}:${line}:${col}`;
+  // Build the location header
+  let result = "";
+  if (fileType) {
+    result += `📄 ${fileType} • `;
+  }
+  result += `${filePath}:${line}:${col}`;
 
   if (showContext && context?.contextLines) {
     const lines = getFileContext(
@@ -68,9 +104,14 @@ function formatLocation(
       context.contextLines,
     );
     if (lines.length > 0) {
-      result += "\n┌─────────────────────────────────────────────────┐\n";
+      // Use a cleaner box drawing style
+      const boxWidth = Math.max(...lines.map(l => l.length), 50);
+      const topBorder = "╭" + "─".repeat(boxWidth) + "╮";
+      const bottomBorder = "╰" + "─".repeat(boxWidth) + "╯";
+      
+      result += "\n" + topBorder + "\n";
       result += lines.join("\n");
-      result += "\n└─────────────────────────────────────────────────┘";
+      result += "\n" + bottomBorder;
     }
   }
 
@@ -78,47 +119,139 @@ function formatLocation(
 }
 
 /**
- * Format hover information
+ * Format hover information with enhanced visual design
  */
 function formatHover(data: any, context?: any): string {
   if (!data || !data.contents) {
-    return "No hover information available";
+    return "💭 No hover information available";
   }
 
   let result = "";
 
-  // Add location header if available
+  // Add header with file context
   if (context?.file) {
     const filePath = formatFilePath(context.file, context.projectRoot);
-    result += `${filePath}:${context.line}:${context.col}\n`;
-    result += "─".repeat(50) + "\n";
+    const fileType = getFileType(filePath);
+    result += `💭 Hover Information\n`;
+    result += `   ${fileType} • ${filePath}:${context.line}:${context.col}\n`;
+    result += `   ` + "─".repeat(50) + "\n\n";
   }
 
-  // Format hover content
+  // Extract and format hover content
+  let content = "";
   if (typeof data.contents === "string") {
-    result += data.contents;
+    content = data.contents;
   } else if (data.contents.value) {
     // Handle MarkupContent
-    const content = data.contents.value;
-    // Clean up markdown code blocks for terminal display
-    result += content.replace(/```(\w+)?\n/g, "").replace(/```/g, "");
+    content = data.contents.value;
   } else if (Array.isArray(data.contents)) {
     // Handle array of MarkedString
-    result += data.contents
+    content = data.contents
       .map((c: any) => (typeof c === "string" ? c : c.value))
       .join("\n");
+  }
+
+  // Parse the content to extract type information and documentation
+  const lines = content.split('\n');
+  let inCodeBlock = false;
+  let codeBlockContent = [];
+  let documentation = [];
+  let symbolKind = "";
+  
+  for (const line of lines) {
+    if (line.startsWith('```')) {
+      if (inCodeBlock) {
+        // End of code block - process it
+        if (codeBlockContent.length > 0) {
+          const typeInfo = codeBlockContent.join('\n').trim();
+          
+          // Detect symbol kind from the type signature
+          if (typeInfo.includes('class ')) symbolKind = "Class";
+          else if (typeInfo.includes('interface ')) symbolKind = "Interface";
+          else if (typeInfo.includes('function ')) symbolKind = "Function";
+          else if (typeInfo.includes('const ')) symbolKind = "Constant";
+          else if (typeInfo.includes('let ')) symbolKind = "Variable";
+          else if (typeInfo.includes('var ')) symbolKind = "Variable";
+          else if (typeInfo.includes('type ')) symbolKind = "Type Alias";
+          else if (typeInfo.includes('enum ')) symbolKind = "Enum";
+          else if (typeInfo.includes('namespace ')) symbolKind = "Namespace";
+          else if (typeInfo.includes('module ')) symbolKind = "Module";
+          
+          // Format the type signature
+          result += `📝 Type Signature\n`;
+          if (symbolKind) {
+            result += `   ${symbolKind}\n\n`;
+          }
+          
+          // Add the code block with proper formatting
+          const codeLines = typeInfo.split('\n');
+          const maxWidth = Math.max(...codeLines.map(l => l.length), 50);
+          const topBorder = "   ╭" + "─".repeat(maxWidth + 2) + "╮";
+          const bottomBorder = "   ╰" + "─".repeat(maxWidth + 2) + "╯";
+          
+          result += topBorder + "\n";
+          for (const codeLine of codeLines) {
+            result += `   │ ${codeLine.padEnd(maxWidth)} │\n`;
+          }
+          result += bottomBorder + "\n";
+        }
+        codeBlockContent = [];
+        inCodeBlock = false;
+      } else {
+        // Start of code block
+        inCodeBlock = true;
+      }
+    } else if (inCodeBlock) {
+      codeBlockContent.push(line);
+    } else if (line.trim() && !line.startsWith('```')) {
+      // Documentation text
+      documentation.push(line);
+    }
+  }
+  
+  // Add documentation if present
+  if (documentation.length > 0) {
+    result += "\n📖 Documentation\n";
+    for (const docLine of documentation) {
+      if (docLine.trim()) {
+        result += `   ${docLine.trim()}\n`;
+      }
+    }
+  }
+  
+  // If we couldn't parse it properly, fall back to cleaned content
+  if (!result.includes("Type Signature") && content.trim()) {
+    // Clean up markdown code blocks for terminal display
+    const cleaned = content.replace(/```(\w+)?\n/g, "").replace(/```/g, "").trim();
+    if (cleaned) {
+      result += `📝 Information\n`;
+      const cleanedLines = cleaned.split('\n');
+      for (const line of cleanedLines) {
+        if (line.trim()) {
+          result += `   ${line}\n`;
+        }
+      }
+    }
+  }
+
+  // Add quick actions hint
+  if (result.includes("Type Signature")) {
+    result += "\n💡 Quick Actions\n";
+    result += "   • Use 'navigate def' to go to definition\n";
+    result += "   • Use 'navigate refs' to find all references\n";
+    result += "   • Use 'navigate type' to see type definition";
   }
 
   return result.trim();
 }
 
 /**
- * Format diagnostics
+ * Format diagnostics with enhanced visual design
  */
 function formatDiagnostics(data: any, context?: any): string {
   // Check for errors in the response
   if (data && data.error) {
-    return `✗ Failed to get diagnostics: ${data.error}`;
+    return `❌ Failed to get diagnostics: ${data.error}`;
   }
 
   // Handle wrapped response from daemon
@@ -127,13 +260,13 @@ function formatDiagnostics(data: any, context?: any): string {
   if (!diagnostics || !Array.isArray(diagnostics)) {
     // Check if this might be due to a server issue
     if (data?.serverStatus === "unhealthy") {
-      return '✗ Language server is not responding. Try running "lsp-top daemon restart"';
+      return '❌ Language server is not responding. Try running "lsp-top daemon restart"';
     }
-    return "No diagnostics found";
+    return "📋 No diagnostics found";
   }
 
   if (diagnostics.length === 0) {
-    return "✓ No issues found";
+    return "✅ No issues found - code looks good!";
   }
 
   // Group diagnostics by severity
@@ -146,74 +279,82 @@ function formatDiagnostics(data: any, context?: any): string {
 
   if (context?.file) {
     const filePath = formatFilePath(context.file, context.projectRoot);
-    result += `Diagnostics for ${filePath}:\n\n`;
+    const fileType = getFileType(filePath);
+    result += `📋 Diagnostics Report\n`;
+    result += `   ${fileType} • ${filePath}\n`;
+    result += `   ` + "─".repeat(50) + "\n\n";
   }
 
+  // Show summary first for quick overview
+  const summaryParts = [];
+  if (errors.length > 0) summaryParts.push(`${errors.length} error${errors.length !== 1 ? "s" : ""}`);
+  if (warnings.length > 0) summaryParts.push(`${warnings.length} warning${warnings.length !== 1 ? "s" : ""}`);
+  if (info.length > 0) summaryParts.push(`${info.length} info`);
+  if (hints.length > 0) summaryParts.push(`${hints.length} hint${hints.length !== 1 ? "s" : ""}`);
+  
+  result += `📊 Summary: ${summaryParts.join(", ")}\n\n`;
+
   if (errors.length > 0) {
-    result += `ERRORS (${errors.length}):\n`;
+    result += `🔴 ERRORS (${errors.length})\n`;
     for (const diag of errors) {
       const line = diag.range.start.line + 1;
       const col = diag.range.start.character + 1;
-      result += `  ✗ [${line}:${col}] ${diag.message}`;
+      result += `   Line ${line}:${col}\n`;
+      result += `   └─ ${diag.message}`;
       if (diag.code) {
-        result += ` (${diag.code})`;
+        result += ` [${diag.code}]`;
       }
-      result += "\n";
+      result += "\n\n";
     }
-    result += "\n";
   }
 
   if (warnings.length > 0) {
-    result += `WARNINGS (${warnings.length}):\n`;
+    result += `🟡 WARNINGS (${warnings.length})\n`;
     for (const diag of warnings) {
       const line = diag.range.start.line + 1;
       const col = diag.range.start.character + 1;
-      result += `  ⚠ [${line}:${col}] ${diag.message}`;
+      result += `   Line ${line}:${col}\n`;
+      result += `   └─ ${diag.message}`;
       if (diag.code) {
-        result += ` (${diag.code})`;
+        result += ` [${diag.code}]`;
       }
-      result += "\n";
+      result += "\n\n";
     }
-    result += "\n";
   }
 
   if (info.length > 0) {
-    result += `INFO (${info.length}):\n`;
+    result += `🔵 INFO (${info.length})\n`;
     for (const diag of info) {
       const line = diag.range.start.line + 1;
       const col = diag.range.start.character + 1;
-      result += `  ℹ [${line}:${col}] ${diag.message}`;
+      result += `   Line ${line}:${col}\n`;
+      result += `   └─ ${diag.message}`;
       if (diag.code) {
-        result += ` (${diag.code})`;
+        result += ` [${diag.code}]`;
       }
-      result += "\n";
+      result += "\n\n";
     }
-    result += "\n";
   }
 
   if (hints.length > 0) {
-    result += `HINTS (${hints.length}):\n`;
+    result += `💡 HINTS (${hints.length})\n`;
     for (const diag of hints) {
       const line = diag.range.start.line + 1;
       const col = diag.range.start.character + 1;
-      result += `  💡 [${line}:${col}] ${diag.message}`;
+      result += `   Line ${line}:${col}\n`;
+      result += `   └─ ${diag.message}`;
       if (diag.code) {
-        result += ` (${diag.code})`;
+        result += ` [${diag.code}]`;
       }
-      result += "\n";
+      result += "\n\n";
     }
-    result += "\n";
   }
-
-  // Add summary
-  result += `─────────────────────────────────────────────────\n`;
-  result += `Total: ${errors.length} error${errors.length !== 1 ? "s" : ""}, ${warnings.length} warning${warnings.length !== 1 ? "s" : ""}, ${info.length} info, ${hints.length} hint${hints.length !== 1 ? "s" : ""}`;
 
   return result.trim();
 }
 
 /**
- * Format references
+ * Format references with enhanced visual design
  */
 function formatReferences(data: any, context?: any): string {
   // Convert object with numeric keys to array if needed
@@ -226,44 +367,90 @@ function formatReferences(data: any, context?: any): string {
   }
 
   if (!refs || !Array.isArray(refs)) {
-    return "No references found";
+    return "❌ No references found";
   }
 
   if (refs.length === 0) {
-    return "No references found";
+    return "❌ No references found";
   }
 
   data = refs; // Use the converted array
 
-  let result = `Found ${data.length} reference${data.length === 1 ? "" : "s"}:\n\n`;
+  // Group references by file for statistics
+  const fileGroups = data.reduce((acc: any, ref: Location) => {
+    const file = formatFilePath(ref.uri, context?.projectRoot);
+    if (!acc[file]) acc[file] = [];
+    acc[file].push(ref);
+    return acc;
+  }, {});
+
+  const fileCount = Object.keys(fileGroups).length;
+  
+  // Build header with statistics
+  let result = `🔍 Found ${data.length} reference${data.length === 1 ? "" : "s"}`;
+  result += ` in ${fileCount} file${fileCount === 1 ? "" : "s"}\n`;
+  
+  // Add file type breakdown if multiple types
+  const fileTypes = new Set(Object.keys(fileGroups).map(f => getFileType(f)));
+  if (fileTypes.size > 1) {
+    result += `   ${Array.from(fileTypes).join(", ")} files\n`;
+  }
+  result += "\n";
 
   if (context?.groupByFile) {
-    // Group references by file
-    const grouped = data.reduce((acc: any, ref: Location) => {
-      const file = formatFilePath(ref.uri, context.projectRoot);
-      if (!acc[file]) acc[file] = [];
-      acc[file].push(ref);
-      return acc;
-    }, {});
-
-    for (const [file, refs] of Object.entries(grouped)) {
-      result += `${file} (${(refs as Location[]).length}):\n`;
+    // Group references by file with better formatting
+    for (const [file, refs] of Object.entries(fileGroups)) {
+      const fileType = getFileType(file);
+      result += `📄 ${fileType} • ${file}\n`;
+      result += `   ${(refs as Location[]).length} reference${(refs as Location[]).length === 1 ? "" : "s"}:\n`;
+      
       for (const ref of refs as Location[]) {
         const line = ref.range.start.line + 1;
         const col = ref.range.start.character + 1;
-        result += `  ${line}:${col}\n`;
+        result += `   • Line ${line}, column ${col}\n`;
       }
       result += "\n";
     }
   } else {
-    // List all references
+    // List all references with context
     let count = 0;
     for (const ref of data) {
       if (context?.limit && count >= context.limit) {
-        result += `\n... and ${data.length - count} more`;
+        const remaining = data.length - count;
+        result += `\n📊 ... and ${remaining} more reference${remaining === 1 ? "" : "s"}`;
         break;
       }
-      result += formatLocation(ref, context, true) + "\n";
+      
+      // Add a separator between references for clarity
+      if (count > 0) {
+        result += "\n";
+      }
+      
+      const filePath = formatFilePath(ref.uri, context?.projectRoot);
+      const fileType = getFileType(filePath);
+      const line = ref.range.start.line + 1;
+      const col = ref.range.start.character + 1;
+      
+      result += `[${count + 1}/${data.length}] ${fileType} • ${filePath}:${line}:${col}\n`;
+      
+      // Get context lines
+      if (context?.contextLines) {
+        const lines = getFileContext(
+          ref.uri,
+          ref.range.start.line,
+          context.contextLines,
+        );
+        if (lines.length > 0) {
+          const boxWidth = Math.max(...lines.map(l => l.length), 50);
+          const topBorder = "╭" + "─".repeat(boxWidth) + "╮";
+          const bottomBorder = "╰" + "─".repeat(boxWidth) + "╯";
+          
+          result += topBorder + "\n";
+          result += lines.join("\n");
+          result += "\n" + bottomBorder + "\n";
+        }
+      }
+      
       count++;
     }
   }
@@ -272,15 +459,15 @@ function formatReferences(data: any, context?: any): string {
 }
 
 /**
- * Format symbols
+ * Format symbols with enhanced visual design and context
  */
 function formatSymbols(data: any, context?: any): string {
   if (!data || !Array.isArray(data)) {
-    return "No symbols found";
+    return "📝 No symbols found";
   }
 
   if (data.length === 0) {
-    return "No symbols found";
+    return "📝 No symbols found";
   }
 
   const kindMap: { [key: number]: string } = {
@@ -312,51 +499,261 @@ function formatSymbols(data: any, context?: any): string {
     26: "TypeParameter",
   };
 
-  let result = `Found ${data.length} symbol${data.length === 1 ? "" : "s"}:\n\n`;
+  const kindIcons: { [key: number]: string } = {
+    5: "🏛",   // Class
+    6: "⚡",   // Method
+    7: "📦",   // Property
+    9: "🔨",   // Constructor
+    10: "📋",  // Enum
+    11: "🔷",  // Interface
+    12: "🔧",  // Function
+    13: "📌",  // Variable
+    14: "🔒",  // Constant
+  };
 
-  function formatSymbol(symbol: any, indent: number = 0): string {
+  // Group symbols by kind
+  const symbolsByKind: { [key: string]: any[] } = {};
+  
+  function categorizeSymbol(symbol: any) {
     const kind = kindMap[symbol.kind] || "Unknown";
-    const line = symbol.location?.range?.start?.line
-      ? ` (line ${symbol.location.range.start.line + 1})`
-      : symbol.range?.start?.line
-        ? ` (line ${symbol.range.start.line + 1})`
-        : "";
+    if (!symbolsByKind[kind]) {
+      symbolsByKind[kind] = [];
+    }
+    symbolsByKind[kind].push(symbol);
+  }
+  
+  // Categorize all top-level symbols
+  data.forEach(categorizeSymbol);
 
-    let str = "  ".repeat(indent) + `${kind}: ${symbol.name}${line}\n`;
-
-    if (symbol.children && symbol.children.length > 0) {
+  // Count total symbols including nested
+  let totalSymbols = 0;
+  function countAllSymbols(symbol: any): number {
+    let count = 1;
+    if (symbol.children) {
       for (const child of symbol.children) {
-        str += formatSymbol(child, indent + 1);
+        count += countAllSymbols(child);
       }
     }
+    return count;
+  }
+  data.forEach(s => totalSymbols += countAllSymbols(s));
 
-    return str;
+  // Build the output
+  let result = `📝 Code Symbols\n`;
+  
+  if (context?.file) {
+    const filePath = formatFilePath(context.file, context.projectRoot);
+    const fileType = getFileType(filePath);
+    result += `   ${fileType} • ${filePath}\n`;
+  }
+  
+  result += `   ${data.length} top-level • ${totalSymbols} total\n`;
+  result += `   ` + "─".repeat(50) + "\n\n";
+
+  // Read file content for context if available
+  let fileLines: string[] = [];
+  if (context?.file) {
+    try {
+      const filePath = context.file.replace("file://", "");
+      const content = fs.readFileSync(filePath, "utf-8");
+      fileLines = content.split("\n");
+    } catch {
+      // Ignore errors reading file
+    }
   }
 
-  for (const symbol of data) {
-    result += formatSymbol(symbol);
+  // Helper to get line preview
+  function getLinePreview(lineNum: number): string {
+    if (fileLines.length > 0 && lineNum >= 0 && lineNum < fileLines.length) {
+      const line = fileLines[lineNum].trim();
+      // Truncate long lines and clean up
+      if (line.length > 50) {
+        return line.substring(0, 47) + "...";
+      }
+      return line;
+    }
+    return "";
   }
+
+  // Helper to detect if symbol is exported
+  function isExported(symbol: any): boolean {
+    const line = symbol.location?.range?.start?.line ?? symbol.range?.start?.line;
+    if (line !== undefined && fileLines.length > 0) {
+      const lineContent = fileLines[line] || "";
+      return lineContent.includes("export ");
+    }
+    return false;
+  }
+
+  // Sort kinds by importance
+  const kindOrder = ["Class", "Interface", "Enum", "Function", "Constant", "Variable", "Type", "Module", "Namespace"];
+  const sortedKinds = Object.keys(symbolsByKind).sort((a, b) => {
+    const aIndex = kindOrder.indexOf(a);
+    const bIndex = kindOrder.indexOf(b);
+    if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
+    if (aIndex === -1) return 1;
+    if (bIndex === -1) return -1;
+    return aIndex - bIndex;
+  });
+
+  // Format each kind group
+  for (const kind of sortedKinds) {
+    const symbols = symbolsByKind[kind];
+    const icon = kindIcons[symbols[0]?.kind] || "•";
+    
+    result += `${icon} ${kind}${symbols.length > 1 ? "s" : ""} (${symbols.length})\n`;
+    result += "   " + "─".repeat(47) + "\n";
+    
+    for (const symbol of symbols) {
+      const line = symbol.location?.range?.start?.line
+        ? symbol.location.range.start.line + 1
+        : symbol.range?.start?.line
+          ? symbol.range.start.line + 1
+          : 0;
+      
+      const col = symbol.location?.range?.start?.character
+        ? symbol.location.range.start.character + 1
+        : symbol.range?.start?.character
+          ? symbol.range.start.character + 1
+          : 1;
+      
+      const exported = isExported(symbol);
+      const exportIcon = exported ? "→" : " ";
+      
+      result += `   ${exportIcon} ${symbol.name}`;
+      result += ` ${exported ? "" : ""}`;
+      result += ` • ${line}:${col}\n`;
+      
+      // Add line preview if available
+      const preview = getLinePreview(line - 1);
+      if (preview) {
+        result += `     ${preview}\n`;
+      }
+      
+      // Show children if any (methods, properties, etc.)
+      if (symbol.children && symbol.children.length > 0) {
+        const childKinds = new Set<string>(symbol.children.map((c: any) => kindMap[c.kind] || "Unknown"));
+        const childSummary = Array.from(childKinds).map((k) => {
+          const count = symbol.children.filter((c: any) => (kindMap[c.kind] || "Unknown") === k).length;
+          return `${count} ${k.toLowerCase()}${count > 1 ? "s" : ""}`;
+        }).join(", ");
+        result += `     └─ ${childSummary}\n`;
+      }
+      
+      result += "\n";
+    }
+  }
+
+  // Add usage hints
+  result += "💡 Tips\n";
+  result += "   → = exported symbol (public API)\n";
+  result += "   Use 'navigate def <file>:<line>:1' to jump to any symbol\n";
+  result += "   Use 'explore outline' for hierarchical view";
 
   return result.trim();
 }
 
 /**
- * Format outline (tree view of symbols)
+ * Format outline (tree view of symbols) with enhanced visual design
  */
 function formatOutline(data: any, context?: any): string {
   if (!data || !Array.isArray(data)) {
-    return "No outline available";
+    return "🗂 No outline available";
   }
 
   if (data.length === 0) {
-    return "No outline available";
+    return "🗂 No outline available";
   }
+
+  const kindMap: { [key: number]: string } = {
+    1: "File",
+    2: "Module",
+    3: "Namespace",
+    4: "Package",
+    5: "Class",
+    6: "Method",
+    7: "Property",
+    8: "Field",
+    9: "Constructor",
+    10: "Enum",
+    11: "Interface",
+    12: "Function",
+    13: "Variable",
+    14: "Constant",
+    15: "String",
+    16: "Number",
+    17: "Boolean",
+    18: "Array",
+    19: "Object",
+    20: "Key",
+    21: "Null",
+    22: "EnumMember",
+    23: "Struct",
+    24: "Event",
+    25: "Operator",
+    26: "TypeParameter",
+  };
+
+  const kindIcons: { [key: number]: string } = {
+    5: "🏛",   // Class
+    6: "⚡",   // Method
+    7: "📦",   // Property
+    9: "🔨",   // Constructor
+    10: "📋",  // Enum
+    11: "🔷",  // Interface
+    12: "🔧",  // Function
+    13: "📌",  // Variable
+    14: "🔒",  // Constant
+    22: "•",   // EnumMember
+  };
+
+  // Count total symbols
+  let totalSymbols = 0;
+  function countAllSymbols(symbol: any): number {
+    let count = 1;
+    if (symbol.children) {
+      for (const child of symbol.children) {
+        count += countAllSymbols(child);
+      }
+    }
+    return count;
+  }
+  data.forEach(s => totalSymbols += countAllSymbols(s));
 
   let result = "";
   if (context?.file) {
     const filePath = formatFilePath(context.file, context.projectRoot);
-    result += `Outline for ${filePath}:\n`;
-    result += "─".repeat(50) + "\n\n";
+    const fileType = getFileType(filePath);
+    result += `🗂 Code Structure\n`;
+    result += `   ${fileType} • ${filePath}\n`;
+    result += `   ${data.length} top-level • ${totalSymbols} total symbols\n`;
+    result += `   ` + "─".repeat(50) + "\n\n";
+  } else {
+    result += `🗂 Code Structure\n`;
+    result += `   ${data.length} top-level • ${totalSymbols} total symbols\n`;
+    result += `   ` + "─".repeat(50) + "\n\n";
+  }
+
+  // Read file content for export detection if available
+  let fileLines: string[] = [];
+  if (context?.file) {
+    try {
+      const filePath = context.file.replace("file://", "");
+      const content = fs.readFileSync(filePath, "utf-8");
+      fileLines = content.split("\n");
+    } catch {
+      // Ignore errors reading file
+    }
+  }
+
+  // Helper to detect if symbol is exported
+  function isExported(symbol: any): boolean {
+    const line = symbol.location?.range?.start?.line ?? symbol.range?.start?.line;
+    if (line !== undefined && fileLines.length > 0 && line < fileLines.length) {
+      const lineContent = fileLines[line] || "";
+      return lineContent.includes("export ");
+    }
+    return false;
   }
 
   function formatNode(
@@ -365,21 +762,71 @@ function formatOutline(data: any, context?: any): string {
     isLast: boolean = false,
     prefix: string = "",
   ): string {
-    const connector = isLast ? "└── " : "├── ";
+    const connector = isLast ? "└─" : "├─";
+    const icon = kindIcons[symbol.kind] || "•";
+    const kind = kindMap[symbol.kind] || "";
     const line = symbol.location?.range?.start?.line
-      ? `:${symbol.location.range.start.line + 1}`
+      ? symbol.location.range.start.line + 1
       : symbol.range?.start?.line
-        ? `:${symbol.range.start.line + 1}`
-        : "";
+        ? symbol.range.start.line + 1
+        : 0;
+    
+    const col = symbol.location?.range?.start?.character
+      ? symbol.location.range.start.character + 1
+      : symbol.range?.start?.character
+        ? symbol.range.start.character + 1
+        : 1;
+    
+    const exported = isExported(symbol);
+    const exportPrefix = exported ? "→ " : "  ";
 
-    let str = prefix + connector + symbol.name + line + "\n";
+    let str = prefix + connector + ` ${icon} ${exportPrefix}${symbol.name}`;
+    
+    // Add line:column
+    if (line > 0) {
+      str += ` • ${line}:${col}`;
+    }
+    
+    // Add kind in parentheses for non-obvious types
+    if (kind && !["Variable", "Property", "Method"].includes(kind)) {
+      str += ` (${kind})`;
+    }
+    
+    str += "\n";
 
     if (symbol.children && symbol.children.length > 0) {
-      const childPrefix = prefix + (isLast ? "    " : "│   ");
-      for (let i = 0; i < symbol.children.length; i++) {
-        const child = symbol.children[i];
-        const isChildLast = i === symbol.children.length - 1;
-        str += formatNode(child, indent + 1, isChildLast, childPrefix);
+      const childPrefix = prefix + (isLast ? "   " : "│  ");
+      
+      // Group children by kind for better readability
+      const childrenByKind: { [key: string]: any[] } = {};
+      for (const child of symbol.children) {
+        const childKind = kindMap[child.kind] || "Unknown";
+        if (!childrenByKind[childKind]) {
+          childrenByKind[childKind] = [];
+        }
+        childrenByKind[childKind].push(child);
+      }
+      
+      // Sort kinds for consistent ordering
+      const sortedKinds = Object.keys(childrenByKind).sort((a, b) => {
+        const order = ["Constructor", "Property", "Method", "Function", "EnumMember"];
+        const aIndex = order.indexOf(a);
+        const bIndex = order.indexOf(b);
+        if (aIndex === -1 && bIndex === -1) return a.localeCompare(b);
+        if (aIndex === -1) return 1;
+        if (bIndex === -1) return -1;
+        return aIndex - bIndex;
+      });
+      
+      let childIndex = 0;
+      const totalChildren = symbol.children.length;
+      
+      for (const childKind of sortedKinds) {
+        for (const child of childrenByKind[childKind]) {
+          childIndex++;
+          const isChildLast = childIndex === totalChildren;
+          str += formatNode(child, indent + 1, isChildLast, childPrefix);
+        }
       }
     }
 
@@ -391,6 +838,11 @@ function formatOutline(data: any, context?: any): string {
     const isLast = i === data.length - 1;
     result += formatNode(symbol, 0, isLast, "");
   }
+
+  // Add legend
+  result += "\n💡 Legend\n";
+  result += "   → = exported (public API)\n";
+  result += "   Tree shows hierarchical code structure";
 
   return result.trim();
 }
@@ -406,15 +858,26 @@ export function formatOutput(
   switch (commandType) {
     case "definition":
     case "typeDefinition":
-      if (!data) return "No definition found";
+      if (!data) return "❌ No definition found";
       // Handle object with numeric keys (from daemon response)
       if (data["0"]) {
-        return formatLocation(data["0"], context);
+        const loc = data["0"];
+        const filePath = formatFilePath(loc.uri, context?.projectRoot);
+        const fileType = getFileType(filePath);
+        let result = `📍 Definition found\n`;
+        result += `   ${fileType} file\n\n`;
+        result += formatLocation(loc, context, true, false);
+        return result;
       }
       if (Array.isArray(data) && data.length === 0)
-        return "No definition found";
+        return "❌ No definition found";
       const location = Array.isArray(data) ? data[0] : data;
-      return formatLocation(location, context);
+      const filePath = formatFilePath(location.uri, context?.projectRoot);
+      const fileType = getFileType(filePath);
+      let result = `📍 Definition found\n`;
+      result += `   ${fileType} file\n\n`;
+      result += formatLocation(location, context, true, false);
+      return result;
 
     case "references":
       return formatReferences(data, context);
@@ -494,8 +957,8 @@ function formatRenamePreview(data: any, context: any): string {
 
   result += `${totalChanges} change${totalChanges === 1 ? "" : "s"} in ${fileCount} file${fileCount === 1 ? "" : "s"}:\n\n`;
 
-  for (const [uri, edits] of Object.entries(changes)) {
-    const filePath = formatFilePath(uri, context.projectRoot);
+  for (const [fileUri, edits] of Object.entries(changes)) {
+    const filePath = formatFilePath(fileUri, context.projectRoot);
     result += `${filePath} (${(edits as any[]).length} change${(edits as any[]).length === 1 ? "" : "s"}):\n`;
 
     for (const edit of edits as any[]) {
@@ -521,8 +984,8 @@ function formatOrganizeImportsPreview(data: any, context: any): string {
   result += "─".repeat(50) + "\n\n";
 
   const changes = data.changes;
-  for (const [uri, edits] of Object.entries(changes)) {
-    const filePath = formatFilePath(uri, context.projectRoot);
+  for (const [fileUri, edits] of Object.entries(changes)) {
+    const filePath = formatFilePath(fileUri, context.projectRoot);
     result += `${filePath}:\n`;
     result += "  Imports will be organized and sorted\n";
     result += `  ${(edits as any[]).length} edit${(edits as any[]).length === 1 ? "" : "s"} will be applied\n`;
