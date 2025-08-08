@@ -1,415 +1,198 @@
-# LSP-Top
+# lsp-top
 
-> Language Server Protocol CLI for code intelligence - "grep for code understanding"
-
-LSP-Top brings IDE-level code intelligence to your terminal. Navigate, explore, analyze, and refactor TypeScript codebases with lightning-fast responses and beautiful, contextual output.
+Unix-compatible Language Server Protocol CLI for TypeScript code intelligence.
 
 ## Features
 
-- **⚡ Sub-100ms responses** - Persistent daemon keeps LSP sessions warm
-- **🎯 Hierarchical commands** - Intuitive command groups for easy discovery
-- **📝 Human-readable output** - Beautiful formatted output with syntax context
-- **🔒 Safe refactoring** - Required `--preview`/`--write` flags for dangerous operations
-- **📊 JSON output** - Machine-readable output with schema versioning
-- **🔍 Code navigation** - Jump to definitions, find references, explore types
-- **🛠️ Code analysis** - Get diagnostics, analyze changed files or entire projects
-- **♻️ Code refactoring** - Rename symbols, organize imports
-- **🌍 Project-wide operations** - Search symbols, analyze entire codebases
-- **📞 Call & type hierarchies** - Understand code relationships and inheritance
+- **Unix Philosophy**: One line per result, tab-separated fields, pipeable output
+- **Fast**: Persistent daemon keeps LSP sessions warm for <100ms responses  
+- **Simple**: Flat command structure, no nested subcommands
+- **Composable**: Output of any command can be input to another
 
 ## Installation
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourusername/lsp-top.git
-cd lsp-top
-
-# Install dependencies
 pnpm install
-
-# Build the project
 pnpm run build
-
-# Link globally (optional)
-npm link
 ```
 
-## Quick Start
+## Usage
 
-```bash
-# Navigate to definition
-lsp-top navigate def src/file.ts:10:5
-
-# Find all references
-lsp-top navigate refs src/file.ts:10:5
-
-# Get type information
-lsp-top explore hover src/file.ts:10:5
-
-# Analyze file for issues
-lsp-top analyze file src/file.ts
-
-# Preview rename operation
-lsp-top refactor rename src/file.ts:10:5 NewName --preview
-```
-
-## Command Structure
-
-LSP-Top uses a hierarchical command structure with 5 main command groups:
-
-### 🧭 Navigate - Code Navigation
-
-Navigate through code relationships and definitions.
+### Basic Commands
 
 ```bash
 # Go to definition
-lsp-top navigate def <file:line:col>
+lsp-top def src/index.ts:10:5
 
 # Find references
-lsp-top navigate refs <file:line:col> [--include-declaration]
+lsp-top refs src/api.ts:20:10
 
-# Go to type definition
-lsp-top navigate type <file:line:col>
+# Check for errors
+lsp-top check src/index.ts
 
-# Find implementations
-lsp-top navigate impl <file:line:col>
+# List symbols
+lsp-top symbols src/calculator.ts
+
+# Search project
+lsp-top search "User"
 ```
 
-### 🔍 Explore - Code Exploration
+### Output Format
 
-Explore code structure and information.
+Default output is TSV (tab-separated values), one result per line:
+
+```
+file	line	column	type	details...
+```
+
+Example:
+```bash
+$ lsp-top check src/index.ts
+src/index.ts	14	7	error	TS2741	Property 'email' is missing
+src/index.ts	33	14	error	TS2339	Property 'subtract' does not exist
+```
+
+### Piping & Composition
 
 ```bash
-# Show hover information (type and docs)
-lsp-top explore hover <file:line:col>
+# Count errors by type
+lsp-top check src/index.ts | cut -f5 | sort | uniq -c
 
-# List document symbols
-lsp-top explore symbols <file> [--query <filter>]
+# Find all errors in project
+find . -name "*.ts" | xargs -I {} lsp-top check {} | grep error
 
-# Show file outline (tree view)
-lsp-top explore outline <file>
+# Get definitions for all references
+lsp-top refs src/api.ts:20:10 | while IFS=$'\t' read -r file line col type _; do
+  lsp-top def "$file:$line:$col"
+done
 
-# Search symbols across entire project
-lsp-top explore project-symbols [query] [--project <path>] [--limit <n>]
-
-# Show call hierarchy (incoming/outgoing calls)
-lsp-top explore call-hierarchy <file:line:col> [--direction <in|out|both>]
-
-# Show type hierarchy (supertypes/subtypes)
-lsp-top explore type-hierarchy <file:line:col> [--direction <super|sub|both>]
-```
-
-### 📊 Analyze - Code Analysis
-
-Analyze code for issues and improvements.
-
-```bash
-# Get diagnostics for a file
-lsp-top analyze file <file> [--fix]
-
-# Analyze changed files (git)
-lsp-top analyze changed [--staged] [--fix]
-
-# Analyze entire project
-lsp-top analyze project [--project <path>] [--severity <level>] [--summary]
-```
-
-### ♻️ Refactor - Code Refactoring
-
-Safely refactor code with preview and write controls.
-
-```bash
-# Rename symbol across project
-lsp-top refactor rename <file:line:col> <newName> --preview
-lsp-top refactor rename <file:line:col> <newName> --write
-
-# Organize imports
-lsp-top refactor organize-imports <file> --preview
-lsp-top refactor organize-imports <file> --write
-```
-
-### 🔧 Daemon - Daemon Management
-
-Manage the LSP daemon lifecycle.
-
-```bash
-# Start daemon (usually automatic)
-lsp-top daemon start
-
-# Stop daemon
-lsp-top daemon stop
-
-# Check status
-lsp-top daemon status
-
-# View logs
-lsp-top daemon logs [--tail <n>] [--follow]
-```
-
-## Output Formats
-
-### Human-Readable (Default)
-
-Beautiful, contextual output with syntax highlighting:
-
-```
-src/calculator.ts:4:1
-┌─────────────────────────────────────────────────┐
-│    1 │ /**
-│    2 │  * A simple calculator class
-│    3 │  */
-│ >  4 │ export class Calculator {
-│    5 │   /**
-│    6 │    * Adds two numbers together
-│    7 │    * @param a First number
-└─────────────────────────────────────────────────┘
+# Count issues by severity
+lsp-top check src/index.ts | cut -f4 | sort | uniq -c
 ```
 
 ### JSON Output
 
-Machine-readable output with schema versioning:
+Use `--json` for structured output:
 
 ```bash
-lsp-top navigate def src/file.ts:10:5 --json
+lsp-top check src/index.ts --json | jq '.results[] | select(.type == "error")'
 ```
 
-```json
-{
-  "schemaVersion": "2.0.0",
-  "ok": true,
-  "data": {
-    "uri": "file:///path/to/definition.ts",
-    "range": {
-      "start": { "line": 3, "character": 0 },
-      "end": { "line": 39, "character": 1 }
-    },
-    "timing": 1
-  }
-}
-```
+## Commands
 
-## Global Options
+### Navigation
+- `def <position>` - Go to definition
+- `refs <position>` - Find references
+- `type <position>` - Go to type definition
+- `impl <position>` - Find implementations
 
-```bash
--v, --verbose        Enable verbose logging
--q, --quiet          Suppress non-error output
---json               Output machine-readable JSON
---log-level <level>  Set log level (error|warn|info|debug|trace)
---trace <flags>      Comma-separated trace flags
---preview            Preview changes without applying
---write              Apply changes to disk
-```
+### Information
+- `hover <position>` - Show hover info
+- `check <file>` - Check for diagnostics
+- `symbols <file>` - List symbols
+- `outline <file>` - Show file structure
 
-## Context Options
+### Search & Analysis
+- `search [query]` - Search project symbols
+- `calls <position>` - Show call hierarchy
+- `types <position>` - Show type hierarchy
 
-Many commands support additional context options:
+### Refactoring
+- `rename <position> <name>` - Rename symbol
 
-```bash
---context <lines>    Number of context lines to show (default: 3)
---group-by-file      Group results by file
---limit <n>          Limit number of results
-```
+### Daemon Management
+- `daemon start` - Start daemon
+- `daemon stop` - Stop daemon
+- `daemon status` - Check status
+- `daemon restart` - Restart daemon
+- `daemon logs` - View logs
+
+## Position Format
+
+Positions use the standard compiler format:
+- `file.ts` - Just the file
+- `file.ts:10` - File and line
+- `file.ts:10:5` - File, line, and column
+
+## Options
+
+### Global Options
+- `--json` - Output JSON instead of TSV
+- `-v, --verbose` - Include context lines
+- `--delimiter <char>` - Field delimiter (default: tab)
+- `--context <n>` - Number of context lines
+
+### Command-Specific Options
+- `refs --include-declaration` - Include the declaration
+- `symbols --kind <type>` - Filter by symbol kind
+- `search --limit <n>` - Limit results
+- `calls --direction in|out|both` - Call direction
 
 ## Examples
 
-### Find all references with context
-
+### Find unused exports
 ```bash
-lsp-top navigate refs src/user.ts:15:10 --context 5 --group-by-file
+# List all exported symbols
+lsp-top symbols src/**/*.ts | grep "export" > exports.txt
+
+# Check each export for references
+while IFS=$'\t' read -r file line col type name; do
+  refs=$(lsp-top refs "$file:$line:$col" | wc -l)
+  if [ "$refs" -eq 0 ]; then
+    echo "Unused: $name in $file:$line"
+  fi
+done < exports.txt
 ```
 
-### Analyze changed files and show fixes
-
+### Analyze complexity
 ```bash
-lsp-top analyze changed --staged --fix
+# Count methods per class
+lsp-top symbols src/**/*.ts | grep -E "class|method" | \
+  awk -F'\t' '/class/{c=$5} /method/{m[c]++} END{for(i in m) print i": "m[i]" methods"}'
 ```
 
-### Preview rename operation
-
+### Find error hotspots
 ```bash
-lsp-top refactor rename src/api.ts:20:5 UserService --preview
+# Files with most errors
+for file in $(find . -name "*.ts"); do
+  errors=$(lsp-top check "$file" | grep -c error)
+  [ "$errors" -gt 0 ] && echo "$errors	$file"
+done | sort -rn | head -10
 ```
 
-### Search symbols across entire project
+## Philosophy
 
-```bash
-# Find all classes in project
-lsp-top explore project-symbols --kind class
+This tool follows Unix philosophy:
+- Do one thing well
+- Output text streams
+- Compose with pipes
+- Silence is golden
+- Simple is better
 
-# Search for "user" related symbols
-lsp-top explore project-symbols user
-
-# Analyze a different project
-lsp-top explore project-symbols --project ~/other-app
-```
-
-### Analyze entire project
-
-```bash
-# Get error summary
-lsp-top analyze project --summary
-
-# Include warnings
-lsp-top analyze project --severity warning
-
-# Analyze specific project
-lsp-top analyze project --project ../my-lib --summary
-```
-
-### Explore call hierarchies
-
-```bash
-# Who calls this function?
-lsp-top explore call-hierarchy src/api.ts:25:10 --direction in
-
-# What does this function call?
-lsp-top explore call-hierarchy src/api.ts:25:10 --direction out
-```
-
-### Get JSON output for automation
-
-```bash
-lsp-top navigate def src/main.ts:10:5 --json | jq '.data.uri'
-```
+No decorations, no colors, no progress bars. Just data.
 
 ## Performance
 
-LSP-Top achieves sub-100ms response times through:
+The daemon architecture ensures fast responses:
+- First request: ~500ms (LSP initialization)
+- Subsequent requests: <100ms
+- Daemon auto-stops after 5 minutes of inactivity
 
-- **Persistent daemon** - Keeps LSP sessions warm
-- **Smart caching** - Reuses open documents
-- **Efficient protocol** - Unix socket communication
-- **Lazy loading** - Only processes what's needed
+## Comparison with Traditional LSP Clients
 
-Typical response times:
-- Navigation commands: ~1ms
-- Analysis commands: ~5-10ms
-- Refactoring preview: ~10-20ms
-
-## Architecture
-
+Traditional:
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│     CLI     │────▶│   Daemon    │────▶│ LSP Client  │
-│ (commander) │     │(Unix Socket)│     │ (TypeScript)│
-└─────────────┘     └─────────────┘     └─────────────┘
-       │                                         │
-       ▼                                         ▼
-┌─────────────┐                         ┌─────────────┐
-│  Formatter  │                         │   Language  │
-│   (Human)   │                         │   Server    │
-└─────────────┘                         └─────────────┘
+🔍 Found 3 references in 2 files
+📄 TypeScript • src/calculator.ts
+   2 references:
+   • Line 4, column 14
+   • Line 10, column 8
 ```
 
-## Project Discovery
-
-LSP-Top automatically discovers TypeScript projects by finding the nearest `tsconfig.json`. 
-
-### How It Works
-
-1. **For file-specific commands**: Walks up from the file to find the nearest `tsconfig.json`
-2. **For project-wide commands**: Uses current directory or `--project` option
-3. **Shows project root**: All project commands display which project they're analyzing
-
-### Specifying Projects
-
-```bash
-# Use current directory (default)
-lsp-top analyze project
-
-# Specify project by directory
-lsp-top analyze project --project ~/my-app
-
-# Specify project by any file within it
-lsp-top explore project-symbols --project src/index.ts
-
-# Use relative paths
-lsp-top analyze project --project ../other-project
-
-# Work from anywhere
-cd /anywhere
-lsp-top analyze project --project /path/to/project
+lsp-top:
+```
+src/calculator.ts	4	14	reference	usage
+src/calculator.ts	10	8	reference	usage
 ```
 
-### Monorepo Support
-
-In monorepos with multiple `tsconfig.json` files, LSP-Top uses the nearest one:
-
-```
-monorepo/
-├── packages/
-│   ├── app/          # Has tsconfig.json
-│   └── lib/          # Has tsconfig.json
-└── tsconfig.json     # Root config
-```
-
-```bash
-cd packages/app
-lsp-top analyze project  # Analyzes only 'app' package
-
-cd ../..
-lsp-top analyze project  # Analyzes entire monorepo
-```
-
-## Troubleshooting
-
-### Daemon Issues
-
-```bash
-# Check if daemon is running
-lsp-top daemon status
-
-# View daemon logs
-lsp-top daemon logs --tail 50
-
-# Force restart
-lsp-top daemon stop && lsp-top daemon start
-```
-
-### Performance Issues
-
-```bash
-# Enable verbose logging
-lsp-top navigate def src/file.ts:10:5 --verbose
-
-# Check timing in JSON output
-lsp-top navigate def src/file.ts:10:5 --json | jq '.data.timing'
-```
-
-## Development
-
-```bash
-# Install dependencies
-pnpm install
-
-# Build TypeScript
-pnpm run build
-
-# Run in development mode
-pnpm run dev -- navigate def src/file.ts:10:5
-
-# Run tests
-pnpm test
-
-# Type checking
-pnpm run typecheck
-```
-
-## Contributing
-
-Contributions are welcome! Please read our contributing guidelines and code of conduct.
-
-## License
-
-MIT
-
-## Acknowledgments
-
-Built with:
-- [TypeScript Language Server](https://github.com/typescript-language-server/typescript-language-server)
-- [Commander.js](https://github.com/tj/commander.js)
-- Node.js LSP libraries
-
----
-
-**LSP-Top** - Bringing IDE intelligence to your terminal 🚀
+The difference: lsp-top output can be processed by standard Unix tools.

@@ -1,7 +1,7 @@
 {
   "name": "lsp-top",
   "version": "1.0.0",
-  "description": "",
+  "description": "Unix-compatible Language Server Protocol CLI for TypeScript",
   "main": "dist/cli.js",
   "bin": {
     "lsp-top": "./dist/cli.js"
