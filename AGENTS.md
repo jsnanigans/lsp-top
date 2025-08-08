@@ -3,38 +3,38 @@
 Build/lint/test
 - Install: pnpm install
 - Build: pnpm run build (tsc)
-- Dev entry: pnpm run dev -- <args> (or use node dist/cli-v2.js <args>)
+- Dev entry: pnpm run dev -- <args> (or use node dist/cli.js <args>)
 - Typecheck: pnpm run typecheck (tsc --noEmit)
 - Lint: none configured (no eslint/prettier). Do not add.
 - Tests (root): none configured; use test-project for examples; manual CLI testing commands below
 - Tests (test-project): pnpm --filter test-project test
 - Single test (jest in test-project): pnpm --filter test-project jest path/to/test.ts -t "test name"
 
-Manual CLI testing (v2 API - hierarchical commands):
+Manual CLI testing:
 ## Navigate Commands
-- Definition: node dist/cli-v2.js navigate def src/calculator.ts:11:3
-- References: node dist/cli-v2.js navigate refs src/calculator.ts:4:14
-- Type definition: node dist/cli-v2.js navigate type src/file.ts:10:5
-- Implementation: node dist/cli-v2.js navigate impl src/interface.ts:5:10
+- Definition: node dist/cli.js navigate def src/calculator.ts:11:3
+- References: node dist/cli.js navigate refs src/calculator.ts:4:14
+- Type definition: node dist/cli.js navigate type src/file.ts:10:5
+- Implementation: node dist/cli.js navigate impl src/interface.ts:5:10
 
 ## Explore Commands
-- Hover: node dist/cli-v2.js explore hover src/calculator.ts:4:14
-- Symbols: node dist/cli-v2.js explore symbols src/index.ts [--query <filter>]
-- Outline: node dist/cli-v2.js explore outline src/index.ts
+- Hover: node dist/cli.js explore hover src/calculator.ts:4:14
+- Symbols: node dist/cli.js explore symbols src/index.ts [--query <filter>]
+- Outline: node dist/cli.js explore outline src/index.ts
 
 ## Analyze Commands
-- File diagnostics: node dist/cli-v2.js analyze file src/index.ts [--fix]
-- Changed files: node dist/cli-v2.js analyze changed [--staged] [--fix]
+- File diagnostics: node dist/cli.js analyze file src/index.ts [--fix]
+- Changed files: node dist/cli.js analyze changed [--staged] [--fix]
 
 ## Refactor Commands (require --preview or --write)
-- Rename: node dist/cli-v2.js refactor rename src/file.ts:10:5 NewName --preview
-- Organize imports: node dist/cli-v2.js refactor organize-imports src/file.ts --write
+- Rename: node dist/cli.js refactor rename src/file.ts:10:5 NewName --preview
+- Organize imports: node dist/cli.js refactor organize-imports src/file.ts --write
 
 ## Daemon Commands
-- Status: node dist/cli-v2.js daemon status
-- Stop: node dist/cli-v2.js daemon stop
-- Start: node dist/cli-v2.js daemon start
-- Logs: node dist/cli-v2.js daemon logs [--tail N] [--follow]
+- Status: node dist/cli.js daemon status
+- Stop: node dist/cli.js daemon stop
+- Start: node dist/cli.js daemon start
+- Logs: node dist/cli.js daemon logs [--tail N] [--follow]
 
 ## Global Options
 - --json: Output machine-readable JSON with schema version

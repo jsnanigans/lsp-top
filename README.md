@@ -240,7 +240,7 @@ Typical response times:
 
 ```
 ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│   CLI v2    │────▶│   Daemon    │────▶│ LSP Client  │
+│     CLI     │────▶│   Daemon    │────▶│ LSP Client  │
 │ (commander) │     │(Unix Socket)│     │ (TypeScript)│
 └─────────────┘     └─────────────┘     └─────────────┘
        │                                         │

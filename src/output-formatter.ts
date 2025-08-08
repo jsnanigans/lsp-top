@@ -216,13 +216,24 @@ function formatDiagnostics(data: any, context?: any): string {
  * Format references
  */
 function formatReferences(data: any, context?: any): string {
-  if (!data || !Array.isArray(data)) {
+  // Convert object with numeric keys to array if needed
+  let refs = data;
+  if (data && typeof data === "object" && !Array.isArray(data)) {
+    // Filter out non-numeric keys like 'timing'
+    refs = Object.keys(data)
+      .filter((key) => !isNaN(Number(key)))
+      .map((key) => data[key]);
+  }
+
+  if (!refs || !Array.isArray(refs)) {
     return "No references found";
   }
 
-  if (data.length === 0) {
+  if (refs.length === 0) {
     return "No references found";
   }
+
+  data = refs; // Use the converted array
 
   let result = `Found ${data.length} reference${data.length === 1 ? "" : "s"}:\n\n`;
 
@@ -252,7 +263,7 @@ function formatReferences(data: any, context?: any): string {
         result += `\n... and ${data.length - count} more`;
         break;
       }
-      result += formatLocation(ref, context, false) + "\n";
+      result += formatLocation(ref, context, true) + "\n";
       count++;
     }
   }

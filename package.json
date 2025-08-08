@@ -2,13 +2,13 @@
   "name": "lsp-top",
   "version": "1.0.0",
   "description": "",
-  "main": "dist/cli-v2.js",
+  "main": "dist/cli.js",
   "bin": {
-    "lsp-top": "./dist/cli-v2.js"
+    "lsp-top": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/cli-v2.ts",
+    "dev": "tsx src/cli.ts",
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
