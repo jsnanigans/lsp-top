@@ -96,6 +96,13 @@ When adding new LSP commands:
 
 ## Important Notes
 
+### Version Philosophy
+- **No Backward Compatibility Required** - This project has never been released publicly
+- **Always Version 1.0** - We are iterating on ideas, not maintaining legacy code
+- **No Migration Code** - Never write migration or compatibility layers for old commands/APIs
+- **Free to Break Things** - Feel free to completely restructure commands and APIs as needed
+- **Clean Slate Approach** - When improving the design, don't preserve old patterns
+
 ### Performance Considerations
 - Daemon keeps LSP sessions warm for <100ms response times
 - Document lifecycle (open/change/close) is managed automatically
