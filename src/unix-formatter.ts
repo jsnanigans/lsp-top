@@ -1,6 +1,6 @@
 /**
  * Unix-compatible output formatter
- * Produces TSV output by default, with optional JSON
+ * Produces aligned text output by default, TSV with --no-align, JSON with --json
  */
 
 import * as fs from "fs";
@@ -12,6 +12,7 @@ export interface FormatOptions {
   delimiter?: string;
   noHeaders?: boolean;
   contextLines?: number;
+  align?: boolean;  // Align columns for readability (default: true)
 }
 
 export interface ResultRow {
@@ -25,27 +26,79 @@ export interface ResultRow {
 /**
  * Convert URI to relative file path
  */
-function uriToPath(uri: string, projectRoot?: string): string {
+function uriToPath(uri: string): string {
   const filePath = uri.replace("file://", "");
-  if (projectRoot) {
-    const relative = path.relative(projectRoot, filePath);
-    return relative.startsWith("..") ? filePath : relative;
+  // Always make paths relative to cwd for consistency
+  if (path.isAbsolute(filePath)) {
+    const relative = path.relative(process.cwd(), filePath);
+    // If the file is outside cwd (starts with ..), show just the basename
+    if (relative.startsWith("..")) {
+      return path.basename(filePath);
+    }
+    return relative || ".";
   }
   return filePath;
 }
 
 /**
- * Format a single row as TSV
+ * Format rows with optional alignment
  */
-function formatRow(row: ResultRow, delimiter: string = "\t"): string {
-  const fields = [
-    row.file,
-    row.line.toString(),
-    row.column.toString(),
-    row.type,
-    ...row.details
-  ];
-  return fields.join(delimiter);
+function formatRows(rows: ResultRow[], options: FormatOptions = {}): string {
+  if (rows.length === 0) return "";
+  
+  // For pure TSV output (no alignment)
+  if (options.align === false) {
+    return rows.map(row => {
+      const fields = [
+        row.file,
+        row.line.toString(),
+        row.column.toString(),
+        row.type,
+        ...row.details
+      ];
+      return fields.join("\t");  // Always use tabs for TSV
+    }).join("\n");
+  }
+  
+  // For aligned output (default) - like ls -l
+  // Calculate column widths
+  const maxFile = Math.max(...rows.map(r => r.file.length));
+  const maxLine = Math.max(...rows.map(r => r.line.toString().length));
+  const maxCol = Math.max(...rows.map(r => r.column.toString().length));
+  const maxType = Math.max(...rows.map(r => r.type.length));
+  
+  // Calculate detail column widths
+  const maxDetails: number[] = [];
+  for (const row of rows) {
+    for (let i = 0; i < row.details.length; i++) {
+      if (!maxDetails[i]) maxDetails[i] = 0;
+      maxDetails[i] = Math.max(maxDetails[i], row.details[i].length);
+    }
+  }
+  
+  // Format with padding
+  return rows.map(row => {
+    const parts = [
+      row.file.padEnd(maxFile),
+      row.line.toString().padStart(maxLine),
+      row.column.toString().padStart(maxCol),
+      row.type.padEnd(maxType)
+    ];
+    
+    // Add details with proper padding
+    for (let i = 0; i < row.details.length; i++) {
+      const detail = row.details[i] || "";
+      // Pad all but the last detail
+      if (i < row.details.length - 1 && maxDetails[i]) {
+        parts.push(detail.padEnd(maxDetails[i]));
+      } else {
+        parts.push(detail);
+      }
+    }
+    
+    // Use double space for readability
+    return parts.join("  ");
+  }).join("\n");
 }
 
 /**
@@ -71,7 +124,7 @@ function getContext(filePath: string, line: number, contextLines: number = 3): s
 }
 
 /**
- * Format definition results
+ * Format definition results - single result expected
  */
 export function formatDefinition(data: any, options: FormatOptions = {}): string {
   if (options.json) {
@@ -91,19 +144,19 @@ export function formatDefinition(data: any, options: FormatOptions = {}): string
   for (const loc of locations) {
     if (!loc || !loc.uri) continue;
     
-    const row: ResultRow = {
-      file: uriToPath(loc.uri),
-      line: loc.range.start.line + 1,
-      column: loc.range.start.character + 1,
-      type: "definition",
-      details: []
-    };
+    const file = uriToPath(loc.uri);
+    const line = loc.range.start.line + 1;
+    const col = loc.range.start.character + 1;
     
-    results.push(formatRow(row, options.delimiter));
+    // Simple format: just the location
+    results.push(`${file}:${line}:${col}`);
     
+    // Add context if verbose
     if (options.verbose && options.contextLines) {
-      const context = getContext(loc.uri, row.line, options.contextLines);
-      results.push(...context);
+      const context = getContext(loc.uri, line, options.contextLines);
+      if (context.length > 0) {
+        results.push(...context);
+      }
     }
   }
   
@@ -111,7 +164,7 @@ export function formatDefinition(data: any, options: FormatOptions = {}): string
 }
 
 /**
- * Format references results
+ * Format references results - list of locations
  */
 export function formatReferences(data: any, options: FormatOptions = {}): string {
   if (options.json) {
@@ -128,29 +181,21 @@ export function formatReferences(data: any, options: FormatOptions = {}): string
   for (const ref of data) {
     if (!ref || !ref.uri) continue;
     
-    const row: ResultRow = {
-      file: uriToPath(ref.uri),
-      line: ref.range.start.line + 1,
-      column: ref.range.start.character + 1,
-      type: "reference",
-      details: []
-    };
+    const file = uriToPath(ref.uri);
+    const line = ref.range.start.line + 1;
+    const col = ref.range.start.character + 1;
     
-    results.push(formatRow(row, options.delimiter));
-    
-    if (options.verbose && options.contextLines) {
-      const context = getContext(ref.uri, row.line, options.contextLines);
-      results.push(...context);
-    }
+    // Simple format: file:line:col
+    results.push(`${file}:${line}:${col}`);
   }
   
   return results.join("\n");
 }
 
 /**
- * Format diagnostics results
+ * Format diagnostics results - follows TypeScript compiler format
  */
-export function formatDiagnostics(data: any, options: FormatOptions = {}): string {
+export function formatDiagnostics(data: any, options: FormatOptions = {}, context?: any): string {
   if (options.json) {
     return JSON.stringify({
       command: "diagnostics",
@@ -161,34 +206,44 @@ export function formatDiagnostics(data: any, options: FormatOptions = {}): strin
   const diagnostics = data?.diagnostics || data;
   if (!diagnostics || !Array.isArray(diagnostics)) return "";
   
-  const results: string[] = [];
   const severityMap: { [key: number]: string } = {
     1: "error",
-    2: "warning",
+    2: "warning", 
     3: "info",
     4: "hint"
   };
   
+  // Get the file path from context - use relative path
+  let filePath = context?.file || ".";
+  if (filePath && filePath !== ".") {
+    filePath = path.isAbsolute(filePath) 
+      ? path.relative(process.cwd(), filePath) || "."
+      : filePath;
+  }
+  
+  // Use compiler-style format: file:line:col: severity code: message
+  const results: string[] = [];
+  
   for (const diag of diagnostics) {
-    const row: ResultRow = {
-      file: options.verbose ? diag.source || "current" : ".",
-      line: diag.range.start.line + 1,
-      column: diag.range.start.character + 1,
-      type: severityMap[diag.severity] || "info",
-      details: [
-        diag.code || "",
-        diag.message
-      ]
-    };
+    const line = diag.range.start.line + 1;
+    const col = diag.range.start.character + 1;
+    const severity = severityMap[diag.severity] || "info";
+    const code = diag.code ? `TS${diag.code}` : "";
     
-    results.push(formatRow(row, options.delimiter));
+    // Format: file:line:col: severity [code]: message
+    // This matches TypeScript and GCC output format
+    if (code) {
+      results.push(`${filePath}:${line}:${col}: ${severity} ${code}: ${diag.message}`);
+    } else {
+      results.push(`${filePath}:${line}:${col}: ${severity}: ${diag.message}`);
+    }
   }
   
   return results.join("\n");
 }
 
 /**
- * Format hover results
+ * Format hover results - just show the content
  */
 export function formatHover(data: any, options: FormatOptions = {}): string {
   if (options.json) {
@@ -208,30 +263,19 @@ export function formatHover(data: any, options: FormatOptions = {}): string {
   } else if (Array.isArray(data.contents)) {
     content = data.contents
       .map((c: any) => (typeof c === "string" ? c : c.value))
-      .join(" ");
+      .join("\n");
   }
   
-  // Clean up markdown formatting
-  content = content
-    .replace(/```\w*\n?/g, "")
-    .replace(/\n+/g, " ")
-    .trim();
+  // Clean up markdown code blocks but preserve structure
+  content = content.replace(/```(\w+)?\n/g, "").replace(/```/g, "").trim();
   
-  const row: ResultRow = {
-    file: ".",
-    line: 0,
-    column: 0,
-    type: "hover",
-    details: [content]
-  };
-  
-  return formatRow(row, options.delimiter);
+  return content;
 }
 
 /**
- * Format symbols results
+ * Format symbols results - for a single file
  */
-export function formatSymbols(data: any, options: FormatOptions = {}): string {
+export function formatSymbols(data: any, options: FormatOptions = {}, context?: any): string {
   if (options.json) {
     return JSON.stringify({
       command: "symbols",
@@ -239,9 +283,10 @@ export function formatSymbols(data: any, options: FormatOptions = {}): string {
     });
   }
 
-  if (!data || !Array.isArray(data)) return "";
+  // Handle wrapped response from daemon
+  const symbols = data?.symbols || data;
+  if (!symbols || !Array.isArray(symbols)) return "";
   
-  const results: string[] = [];
   const kindMap: { [key: number]: string } = {
     5: "class",
     6: "method",
@@ -256,30 +301,41 @@ export function formatSymbols(data: any, options: FormatOptions = {}): string {
     26: "type-parameter"
   };
   
-  function processSymbol(symbol: any, containerName?: string) {
+  const results: string[] = [];
+  
+  // Get the file path from context if available
+  let filePath = context?.file;
+  if (filePath && path.isAbsolute(filePath)) {
+    filePath = path.relative(process.cwd(), filePath) || ".";
+  }
+  
+  function processSymbol(symbol: any, indent: number = 0) {
     const kind = kindMap[symbol.kind] || "symbol";
     const line = symbol.location?.range?.start?.line ?? symbol.range?.start?.line ?? 0;
     const col = symbol.location?.range?.start?.character ?? symbol.range?.start?.character ?? 0;
     
-    const row: ResultRow = {
-      file: symbol.location?.uri ? uriToPath(symbol.location.uri) : ".",
-      line: line + 1,
-      column: col + 1,
-      type: kind,
-      details: containerName ? [symbol.name, containerName] : [symbol.name]
-    };
+    // Format: [indent]name (kind) at line:col
+    const prefix = "  ".repeat(indent);
+    if (filePath && line > 0) {
+      results.push(`${prefix}${symbol.name} (${kind}) at ${line + 1}:${col + 1}`);
+    } else {
+      results.push(`${prefix}${symbol.name} (${kind})`);
+    }
     
-    results.push(formatRow(row, options.delimiter));
-    
-    // Process children
+    // Process children with increased indent
     if (symbol.children && Array.isArray(symbol.children)) {
       for (const child of symbol.children) {
-        processSymbol(child, symbol.name);
+        processSymbol(child, indent + 1);
       }
     }
   }
   
-  for (const symbol of data) {
+  // If we have a file path, show it as a header
+  if (filePath) {
+    results.push(`${filePath}:`);
+  }
+  
+  for (const symbol of symbols) {
     processSymbol(symbol);
   }
   
@@ -287,7 +343,7 @@ export function formatSymbols(data: any, options: FormatOptions = {}): string {
 }
 
 /**
- * Format workspace symbols
+ * Format workspace symbols - consistent with other commands
  */
 export function formatWorkspaceSymbols(data: any, options: FormatOptions = {}): string {
   if (options.json) {
@@ -300,7 +356,6 @@ export function formatWorkspaceSymbols(data: any, options: FormatOptions = {}): 
   const symbols = data?.symbols || data;
   if (!symbols || !Array.isArray(symbols)) return "";
   
-  const results: string[] = [];
   const kindMap: { [key: number]: string } = {
     5: "class",
     6: "method",
@@ -313,25 +368,21 @@ export function formatWorkspaceSymbols(data: any, options: FormatOptions = {}): 
     14: "constant"
   };
   
+  const results: string[] = [];
+  
   for (const symbol of symbols) {
     const kind = kindMap[symbol.kind] || "symbol";
     const uri = symbol.location?.uri || symbol.uri;
+    const file = uri ? uriToPath(uri) : ".";
     const line = symbol.location?.range?.start?.line ?? symbol.range?.start?.line ?? 0;
     const col = symbol.location?.range?.start?.character ?? symbol.range?.start?.character ?? 0;
     
-    const row: ResultRow = {
-      file: uri ? uriToPath(uri) : ".",
-      line: line + 1,
-      column: col + 1,
-      type: kind,
-      details: [symbol.name]
-    };
-    
+    // Format: file:line:col: kind: name [in container]
+    let result = `${file}:${line + 1}:${col + 1}: ${kind}: ${symbol.name}`;
     if (symbol.containerName) {
-      row.details.push(symbol.containerName);
+      result += ` (in ${symbol.containerName})`;
     }
-    
-    results.push(formatRow(row, options.delimiter));
+    results.push(result);
   }
   
   return results.join("\n");
@@ -350,23 +401,21 @@ export function formatRename(data: any, options: FormatOptions = {}): string {
 
   if (!data || !data.changes) return "";
   
-  const results: string[] = [];
+  const rows: ResultRow[] = [];
   
   for (const [uri, edits] of Object.entries(data.changes)) {
     for (const edit of edits as any[]) {
-      const row: ResultRow = {
+      rows.push({
         file: uriToPath(uri),
         line: edit.range.start.line + 1,
         column: edit.range.start.character + 1,
         type: "edit",
         details: [edit.newText || ""]
-      };
-      
-      results.push(formatRow(row, options.delimiter));
+      });
     }
   }
   
-  return results.join("\n");
+  return formatRows(rows, options);
 }
 
 /**
@@ -382,31 +431,29 @@ export function formatCallHierarchy(data: any, options: FormatOptions = {}): str
 
   if (!data || !data.item) return "";
   
-  const results: string[] = [];
+  const rows: ResultRow[] = [];
   
   // Current item
   const item = data.item;
-  const row: ResultRow = {
+  rows.push({
     file: uriToPath(item.uri),
     line: item.range.start.line + 1,
     column: item.range.start.character + 1,
     type: "current",
     details: [item.name]
-  };
-  results.push(formatRow(row, options.delimiter));
+  });
   
   // Incoming calls
   if (data.incoming) {
     for (const call of data.incoming) {
       const from = call.from;
-      const inRow: ResultRow = {
+      rows.push({
         file: uriToPath(from.uri),
         line: from.range.start.line + 1,
         column: from.range.start.character + 1,
         type: "incoming",
         details: [from.name]
-      };
-      results.push(formatRow(inRow, options.delimiter));
+      });
     }
   }
   
@@ -414,18 +461,17 @@ export function formatCallHierarchy(data: any, options: FormatOptions = {}): str
   if (data.outgoing) {
     for (const call of data.outgoing) {
       const to = call.to;
-      const outRow: ResultRow = {
+      rows.push({
         file: uriToPath(to.uri),
         line: to.range.start.line + 1,
         column: to.range.start.character + 1,
         type: "outgoing",
         details: [to.name]
-      };
-      results.push(formatRow(outRow, options.delimiter));
+      });
     }
   }
   
-  return results.join("\n");
+  return formatRows(rows, options);
 }
 
 /**
@@ -441,54 +487,51 @@ export function formatTypeHierarchy(data: any, options: FormatOptions = {}): str
 
   if (!data || !data.item) return "";
   
-  const results: string[] = [];
+  const rows: ResultRow[] = [];
   
   // Current item
   const item = data.item;
-  const row: ResultRow = {
+  rows.push({
     file: uriToPath(item.uri),
     line: item.range.start.line + 1,
     column: item.range.start.character + 1,
     type: "current",
     details: [item.name]
-  };
-  results.push(formatRow(row, options.delimiter));
+  });
   
   // Supertypes
   if (data.supertypes) {
     for (const supertype of data.supertypes) {
-      const superRow: ResultRow = {
+      rows.push({
         file: uriToPath(supertype.uri),
         line: supertype.range.start.line + 1,
         column: supertype.range.start.character + 1,
         type: "supertype",
         details: [supertype.name]
-      };
-      results.push(formatRow(superRow, options.delimiter));
+      });
     }
   }
   
   // Subtypes
   if (data.subtypes) {
     for (const subtype of data.subtypes) {
-      const subRow: ResultRow = {
+      rows.push({
         file: uriToPath(subtype.uri),
         line: subtype.range.start.line + 1,
         column: subtype.range.start.character + 1,
         type: "subtype",
         details: [subtype.name]
-      };
-      results.push(formatRow(subRow, options.delimiter));
+      });
     }
   }
   
-  return results.join("\n");
+  return formatRows(rows, options);
 }
 
 /**
  * Generic formatter that routes to specific formatters
  */
-export function format(command: string, data: any, options: FormatOptions = {}): string {
+export function format(command: string, data: any, options: FormatOptions = {}, context?: any): string {
   switch (command) {
     case "definition":
     case "typeDefinition":
@@ -497,12 +540,12 @@ export function format(command: string, data: any, options: FormatOptions = {}):
     case "implementation":
       return formatReferences(data, options);
     case "diagnostics":
-      return formatDiagnostics(data, options);
+      return formatDiagnostics(data, options, context);
     case "hover":
       return formatHover(data, options);
     case "symbols":
     case "outline":
-      return formatSymbols(data, options);
+      return formatSymbols(data, options, context);
     case "workspaceSymbols":
       return formatWorkspaceSymbols(data, options);
     case "rename":

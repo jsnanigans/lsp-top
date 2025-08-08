@@ -69,6 +69,7 @@ function sendRequest(
   request: any,
   options: any,
   commandType: string,
+  context?: any
 ): void {
   ensureDaemonRunning(options);
 
@@ -92,9 +93,10 @@ function sendRequest(
               verbose: options.verbose,
               delimiter: options.delimiter,
               noHeaders: options.noHeaders,
-              contextLines: options.context ? parseInt(options.context) : 0
+              contextLines: options.context ? parseInt(options.context) : 0,
+              align: options.align  // Commander sets this to false with --no-align
             };
-            const output = formatter.format(commandType, response.data, formatOptions);
+            const output = formatter.format(commandType, response.data, formatOptions, context);
             if (output) {
               console.log(output);
             }
@@ -132,6 +134,7 @@ program
   .option("-q, --quiet", "Suppress non-error output")
   .option("--delimiter <char>", "Field delimiter", "\t")
   .option("--no-headers", "Omit column headers")
+  .option("--no-align", "Don't align columns (pure TSV)")
   .option("--context <n>", "Context lines (implies -v)", "3");
 
 // Definition command
@@ -299,7 +302,7 @@ program
         args: [resolvedFilePath],
       };
 
-      sendRequest(request, options, "diagnostics");
+      sendRequest(request, options, "diagnostics", { file: resolvedFilePath });
     } catch (e: any) {
       console.error(`lsp-top: error: ${e.message}`);
       process.exit(1);
@@ -333,7 +336,7 @@ program
         args: [resolvedFilePath, flags],
       };
 
-      sendRequest(request, options, "symbols");
+      sendRequest(request, options, "symbols", { file: resolvedFilePath });
     } catch (e: any) {
       console.error(`lsp-top: error: ${e.message}`);
       process.exit(1);
@@ -360,7 +363,7 @@ program
         args: [resolvedFilePath, "{}"],
       };
 
-      sendRequest(request, options, "outline");
+      sendRequest(request, options, "outline", { file: resolvedFilePath });
     } catch (e: any) {
       console.error(`lsp-top: error: ${e.message}`);
       process.exit(1);
