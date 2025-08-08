@@ -12,6 +12,7 @@ export const EXIT_CODES = {
   NO_PROJECT: 10,
   LSP_ERROR: 11,
   DAEMON_ERROR: 12,
+  SAFETY_ERROR: 13,
 } as const;
 
 export type ExitCodeKey = keyof typeof EXIT_CODES;

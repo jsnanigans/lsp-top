@@ -3,24 +3,45 @@
 Build/lint/test
 - Install: pnpm install
 - Build: pnpm run build (tsc)
-- Dev entry: pnpm run dev -- <args> (or use node dist/cli-new.js <args>)
-- Typecheck: pnpm run build --noEmit false (tsc checks)
+- Dev entry: pnpm run dev -- <args> (or use node dist/cli-v2.js <args>)
+- Typecheck: pnpm run typecheck (tsc --noEmit)
 - Lint: none configured (no eslint/prettier). Do not add.
 - Tests (root): none configured; use test-project for examples; manual CLI testing commands below
 - Tests (test-project): pnpm --filter test-project test
 - Single test (jest in test-project): pnpm --filter test-project jest path/to/test.ts -t "test name"
 
-Manual CLI testing (NEW API - no aliases/project management needed):
-- Definition: node dist/cli-new.js definition src/calculator.ts:11:3
-- References: node dist/cli-new.js references src/calculator.ts:4:14
-- Diagnostics: node dist/cli-new.js diagnostics src/index.ts
-- Hover: node dist/cli-new.js hover src/calculator.ts:4:14
-- Symbols: node dist/cli-new.js symbols src/index.ts
-- Inspect: node dist/cli-new.js inspect src/index.ts
-- Inspect changed: node dist/cli-new.js inspect-changed
-- Daemon status: node dist/cli-new.js daemon-status
-- Stop daemon: node dist/cli-new.js stop-daemon
-- Logs: node dist/cli-new.js logs [--tail N] [--follow]
+Manual CLI testing (v2 API - hierarchical commands):
+## Navigate Commands
+- Definition: node dist/cli-v2.js navigate def src/calculator.ts:11:3
+- References: node dist/cli-v2.js navigate refs src/calculator.ts:4:14
+- Type definition: node dist/cli-v2.js navigate type src/file.ts:10:5
+- Implementation: node dist/cli-v2.js navigate impl src/interface.ts:5:10
+
+## Explore Commands
+- Hover: node dist/cli-v2.js explore hover src/calculator.ts:4:14
+- Symbols: node dist/cli-v2.js explore symbols src/index.ts [--query <filter>]
+- Outline: node dist/cli-v2.js explore outline src/index.ts
+
+## Analyze Commands
+- File diagnostics: node dist/cli-v2.js analyze file src/index.ts [--fix]
+- Changed files: node dist/cli-v2.js analyze changed [--staged] [--fix]
+
+## Refactor Commands (require --preview or --write)
+- Rename: node dist/cli-v2.js refactor rename src/file.ts:10:5 NewName --preview
+- Organize imports: node dist/cli-v2.js refactor organize-imports src/file.ts --write
+
+## Daemon Commands
+- Status: node dist/cli-v2.js daemon status
+- Stop: node dist/cli-v2.js daemon stop
+- Start: node dist/cli-v2.js daemon start
+- Logs: node dist/cli-v2.js daemon logs [--tail N] [--follow]
+
+## Global Options
+- --json: Output machine-readable JSON with schema version
+- --verbose: Enable verbose logging
+- --context <n>: Number of context lines (for navigation commands)
+- --group-by-file: Group results by file (for refs/impl)
+- --limit <n>: Limit number of results
 
 Note: 
 - Daemon starts automatically when any command is run

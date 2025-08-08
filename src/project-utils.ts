@@ -9,6 +9,23 @@ import * as path from "path";
 export function findProjectRoot(filePath: string): string | null {
   // Resolve to absolute path and get directory
   const absPath = path.resolve(filePath);
+
+  // Check if file exists
+  if (!fs.existsSync(absPath)) {
+    // For non-existent files, start from the directory they would be in
+    let currentDir = path.dirname(absPath);
+
+    // Walk up the directory tree
+    while (currentDir !== path.dirname(currentDir)) {
+      const tsconfigPath = path.join(currentDir, "tsconfig.json");
+      if (fs.existsSync(tsconfigPath)) {
+        return currentDir;
+      }
+      currentDir = path.dirname(currentDir);
+    }
+    return null;
+  }
+
   let currentDir = fs.statSync(absPath).isDirectory()
     ? absPath
     : path.dirname(absPath);

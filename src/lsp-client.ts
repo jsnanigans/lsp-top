@@ -14,9 +14,13 @@ export class LSPClient {
   private process: ChildProcess | null = null;
   private messageId = 0;
   private responseHandlers = new Map<
-    number | string,
-    (response: LSPMessage) => void
+    number,
+    { resolve: (value: any) => void; reject: (reason: any) => void }
   >();
+  private buffer = "";
+  private isHealthy: boolean = false;
+  private restartAttempts: number = 0;
+  private maxRestartAttempts: number = 3;
 
   constructor(
     private command: string,
@@ -102,15 +106,23 @@ export class LSPClient {
         reject(error);
       });
 
-      this.process.on("exit", (code) => {
+      this.process.on("exit", async (code) => {
+        this.isHealthy = false;
         // Only log if unexpected exit
         if (code !== 0 && code !== null) {
-          log("warn", "LSP server exited", { code });
+          log("error", "LSP server crashed", { code });
+
+          // Notify all pending requests of the crash
+          for (const [id, handler] of this.responseHandlers) {
+            handler.reject(new Error(`LSP server crashed with code ${code}`));
+          }
+          this.responseHandlers.clear();
         }
       });
 
       setTimeout(() => {
         log("info", "LSP server started");
+        this.isHealthy = true;
         resolve();
       }, 100);
     });
@@ -122,10 +134,18 @@ export class LSPClient {
     log("trace", "LSP received", {
       preview: JSON.stringify(message).slice(0, 200) + "...",
     });
-    if (message.id !== undefined && this.responseHandlers.has(message.id)) {
+    if (
+      message.id !== undefined &&
+      typeof message.id === "number" &&
+      this.responseHandlers.has(message.id)
+    ) {
       const handler = this.responseHandlers.get(message.id)!;
       this.responseHandlers.delete(message.id);
-      handler(message);
+      if (message.error) {
+        handler.reject(new Error(message.error.message || "Unknown error"));
+      } else {
+        handler.resolve(message.result);
+      }
     } else if (message.method) {
       if (message.method === "textDocument/publishDiagnostics") {
         const uri = message.params?.uri;
@@ -156,6 +176,15 @@ export class LSPClient {
     return this.diagnostics.get(uri) || [];
   }
 
+  sendNotification(method: string, params?: any): void {
+    const message: LSPMessage = {
+      jsonrpc: "2.0",
+      method,
+      params,
+    };
+    this.sendMessage(message);
+  }
+
   sendRequest(method: string, params?: any): Promise<any> {
     const id = ++this.messageId;
     const message: LSPMessage = {
@@ -171,13 +200,15 @@ export class LSPClient {
         reject(new Error(`Request ${method} timed out after 10 seconds`));
       }, 10000);
 
-      this.responseHandlers.set(id, (response) => {
-        clearTimeout(timeout);
-        if (response.error) {
-          reject(new Error(response.error.message));
-        } else {
-          resolve(response.result);
-        }
+      this.responseHandlers.set(id, {
+        resolve: (result: any) => {
+          clearTimeout(timeout);
+          resolve(result);
+        },
+        reject: (error: any) => {
+          clearTimeout(timeout);
+          reject(error);
+        },
       });
 
       this.sendMessage(message);
@@ -245,6 +276,27 @@ export class LSPClient {
     this.sendMessage({ jsonrpc: "2.0", method: "initialized", params: {} });
   }
 
+  async checkHealth(): Promise<boolean> {
+    if (!this.process || this.process.killed) {
+      return false;
+    }
+
+    try {
+      // Send a simple request to check if server responds
+      const result = await Promise.race([
+        this.sendRequest("window/workDoneProgress/create", {
+          token: "health-check",
+        }),
+        new Promise((_, reject) =>
+          setTimeout(() => reject(new Error("Health check timeout")), 2000),
+        ),
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async shutdown(): Promise<void> {
     if (this.process) {
       try {
@@ -258,12 +310,14 @@ export class LSPClient {
           this.process.kill();
         }
         this.process = null;
+        this.isHealthy = false;
       } catch (error) {
         // Force kill if shutdown fails
         if (this.process && !this.process.killed) {
           this.process.kill();
         }
         this.process = null;
+        this.isHealthy = false;
       }
     }
   }
@@ -344,6 +398,41 @@ export class LSPClient {
     return this.sendRequest("textDocument/hover", {
       textDocument: { uri },
       position: { line, character },
+    });
+  }
+
+  async rename(
+    uri: string,
+    line: number,
+    character: number,
+    newName: string,
+  ): Promise<any> {
+    return this.sendRequest("textDocument/rename", {
+      textDocument: { uri },
+      position: { line, character },
+      newName,
+    });
+  }
+
+  async getCodeActions(
+    uri: string,
+    range: {
+      start: { line: number; character: number };
+      end: { line: number; character: number };
+    },
+    diagnostics: any[] = [],
+  ): Promise<any> {
+    return this.sendRequest("textDocument/codeAction", {
+      textDocument: { uri },
+      range,
+      context: { diagnostics },
+    });
+  }
+
+  async executeCommand(command: string, args?: any[]): Promise<any> {
+    return this.sendRequest("workspace/executeCommand", {
+      command,
+      arguments: args,
     });
   }
 }

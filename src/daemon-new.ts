@@ -275,8 +275,35 @@ class Daemon {
 
         case "diagnostics": {
           const [file] = args;
-          const result = await lsp.getDiagnostics(file);
-          return { ...result, timing: timer() };
+          try {
+            const result = await lsp.getDiagnostics(file);
+            return { ...result, timing: timer() };
+          } catch (error) {
+            const errorMessage = String(error);
+            log("error", "Failed to get diagnostics", {
+              file,
+              error: errorMessage,
+            });
+
+            // Provide user-friendly error messages
+            if (
+              errorMessage.includes("ENOENT") ||
+              errorMessage.includes("no such file")
+            ) {
+              return {
+                error: `File not found: ${require("path").basename(file)}`,
+                diagnostics: [],
+                timing: timer(),
+              };
+            }
+
+            return {
+              error: `Failed to get diagnostics: ${errorMessage}`,
+              diagnostics: [],
+              serverStatus: "unhealthy",
+              timing: timer(),
+            };
+          }
         }
 
         case "hover": {
@@ -300,6 +327,43 @@ class Daemon {
           }
 
           return { symbols: result, timing: timer() };
+        }
+
+        case "typeDefinition": {
+          const [file, line, col] = args;
+          const result = await lsp.getTypeDefinition(
+            file,
+            parseInt(line, 10),
+            parseInt(col, 10),
+          );
+          return { ...result, timing: timer() };
+        }
+
+        case "implementation": {
+          const [file, line, col] = args;
+          const result = await lsp.getImplementation(
+            file,
+            parseInt(line, 10),
+            parseInt(col, 10),
+          );
+          return { ...result, timing: timer() };
+        }
+
+        case "rename": {
+          const [file, line, col, newName] = args;
+          const result = await lsp.rename(
+            file,
+            parseInt(line, 10),
+            parseInt(col, 10),
+            newName,
+          );
+          return { ...result, timing: timer() };
+        }
+
+        case "organizeImports": {
+          const [file] = args;
+          const result = await lsp.organizeImports(file);
+          return { ...result, timing: timer() };
         }
 
         case "inspect:file": {
@@ -328,6 +392,19 @@ class Daemon {
           // Use the public method for applying edits
           const result = await lsp.applyWorkspaceEditJson(editJson);
           return { ...result, timing: timer() };
+        }
+
+        case "health": {
+          const sessions = [];
+          for (const [root, session] of this.projects) {
+            const healthy = await session.lsp.checkHealth();
+            sessions.push({ projectRoot: root, healthy });
+          }
+          return {
+            healthy: true,
+            sessions,
+            timing: timer(),
+          };
         }
 
         default:

@@ -1,0 +1,871 @@
+#!/usr/bin/env node
+
+import { Command } from "commander";
+import * as path from "path";
+import * as fs from "fs";
+import * as net from "net";
+import { spawn, execSync } from "child_process";
+import { setLogLevel, setTraceFlags, Level, LOG_FILE } from "./logger";
+import { printJsonAndExit, printTextAndExit, result } from "./errors";
+import { resolveProject } from "./project-utils";
+import { formatOutput } from "./output-formatter";
+
+const SOCKET_PATH = "/tmp/lsp-top.sock";
+const PID_FILE = "/tmp/lsp-top.pid";
+const SCHEMA_VERSION = "2.0.0";
+
+/**
+ * Check if daemon is running
+ */
+function isDaemonRunning(): boolean {
+  try {
+    if (!fs.existsSync(PID_FILE)) return false;
+    const pid = parseInt(fs.readFileSync(PID_FILE, "utf-8"), 10);
+    if (isNaN(pid)) return false;
+    // Check if process exists
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Start daemon if not running
+ */
+function ensureDaemonRunning(options: any = {}): void {
+  if (isDaemonRunning()) return;
+
+  const args: string[] = [];
+  if (options.verbose) args.push("--verbose");
+  if (options.logLevel) args.push("--log-level", String(options.logLevel));
+  if (options.trace) args.push("--trace", String(options.trace));
+
+  const daemon = spawn(
+    process.argv[0],
+    [path.resolve(__dirname, "daemon-new.js"), ...args],
+    {
+      detached: true,
+      stdio: "ignore",
+    },
+  );
+  daemon.unref();
+
+  // Wait a bit for daemon to start
+  let attempts = 0;
+  while (!isDaemonRunning() && attempts < 10) {
+    execSync("sleep 0.1");
+    attempts++;
+  }
+
+  if (!isDaemonRunning()) {
+    throw new Error("Failed to start daemon");
+  }
+}
+
+/**
+ * Send request to daemon
+ */
+function sendDaemonRequest(
+  request: any,
+  options: any,
+  onResult: (data: any) => void,
+  onError: (error: string) => void,
+): void {
+  ensureDaemonRunning(options);
+
+  const client = net.connect(SOCKET_PATH, () => {
+    client.write(JSON.stringify(request));
+  });
+
+  let buffer = "";
+  client.on("data", (data) => {
+    buffer += data.toString();
+    let boundary = buffer.indexOf("\n");
+    while (boundary !== -1) {
+      const chunk = buffer.substring(0, boundary);
+      buffer = buffer.substring(boundary + 1);
+      if (chunk) {
+        try {
+          const response = JSON.parse(chunk);
+          if (response.type === "log" && options.verbose && !options.json) {
+            console.log(response.data);
+          } else if (response.type === "result") {
+            onResult(response.data);
+            client.end();
+          } else if (response.type === "error") {
+            onError(response.message);
+            client.end();
+          }
+        } catch (e) {
+          console.error("Error parsing daemon response:", e);
+        }
+      }
+      boundary = buffer.indexOf("\n");
+    }
+  });
+
+  client.on("error", () => {
+    onError("Failed to connect to daemon");
+  });
+}
+
+/**
+ * Add schema version to JSON output
+ */
+function wrapJsonOutput(data: any): any {
+  return {
+    schemaVersion: SCHEMA_VERSION,
+    ...data,
+  };
+}
+
+/**
+ * Handle LSP command response
+ */
+function handleLspResponse(
+  data: any,
+  options: any,
+  commandType: string,
+  context?: any,
+): void {
+  if (options.json) {
+    printJsonAndExit(wrapJsonOutput(result({ ok: true, data })));
+  } else {
+    // Use the new formatter for human-readable output
+    const formatted = formatOutput(commandType, data, context);
+    printTextAndExit(formatted);
+  }
+}
+
+/**
+ * Handle LSP command error
+ */
+function handleLspError(error: string, options: any): void {
+  if (options.json) {
+    printJsonAndExit(
+      wrapJsonOutput(result({ ok: false, error, code: "LSP_ERROR" })),
+      "LSP_ERROR",
+    );
+  } else {
+    printTextAndExit(`Error: ${error}`, true, "LSP_ERROR");
+  }
+}
+
+const program = new Command();
+
+program
+  .name("lsp-top")
+  .description("Language Server Protocol CLI for code intelligence")
+  .version("2.0.0")
+  .option("-v, --verbose", "Enable verbose logging")
+  .option("-q, --quiet", "Suppress non-error output")
+  .option("--json", "Output machine-readable JSON only")
+  .option("--log-level <level>", "Set log level (error|warn|info|debug|trace)")
+  .option("--trace <flags>", "Comma-separated trace flags")
+  .option(
+    "--preview",
+    "Preview changes without applying (for refactoring commands)",
+  )
+  .option("--write", "Apply changes to disk (for refactoring commands)");
+
+// ============================================================================
+// NAVIGATE Command Group
+// ============================================================================
+const navigate = program
+  .command("navigate")
+  .alias("nav")
+  .description("Navigate through code relationships");
+
+navigate
+  .command("def <file:line:col>")
+  .alias("definition")
+  .description("Go to definition")
+  .option("--context <lines>", "Number of context lines to show", "3")
+  .action((location: string, cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+    const [filePath, line, col] = location.split(":");
+    const { projectRoot, resolvedFilePath } = resolveProject(filePath);
+
+    if (!projectRoot) {
+      const msg = `No tsconfig.json found for ${filePath}`;
+      handleLspError(msg, options);
+      return;
+    }
+
+    const request = {
+      action: "definition",
+      projectRoot,
+      args: [resolvedFilePath, line, col],
+      verbose: options.verbose,
+      logLevel: options.logLevel,
+      trace: options.trace,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) =>
+        handleLspResponse(data, options, "definition", {
+          file: resolvedFilePath,
+          line: parseInt(line),
+          col: parseInt(col),
+          contextLines: parseInt(options.context),
+        }),
+      (error) => handleLspError(error, options),
+    );
+  });
+
+navigate
+  .command("refs <file:line:col>")
+  .alias("references")
+  .description("Find all references")
+  .option("--include-declaration", "Include the declaration")
+  .option("--context <lines>", "Number of context lines to show", "2")
+  .option("--group-by-file", "Group results by file")
+  .option("--limit <n>", "Limit number of results")
+  .action((location: string, cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+    const [filePath, line, col] = location.split(":");
+    const { projectRoot, resolvedFilePath } = resolveProject(filePath);
+
+    if (!projectRoot) {
+      const msg = `No tsconfig.json found for ${filePath}`;
+      handleLspError(msg, options);
+      return;
+    }
+
+    const flags = JSON.stringify({
+      includeDeclaration: !!options.includeDeclaration,
+    });
+
+    const request = {
+      action: "references",
+      projectRoot,
+      args: [resolvedFilePath, line, col, flags],
+      verbose: options.verbose,
+      logLevel: options.logLevel,
+      trace: options.trace,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) =>
+        handleLspResponse(data, options, "references", {
+          file: resolvedFilePath,
+          line: parseInt(line),
+          col: parseInt(col),
+          contextLines: parseInt(options.context),
+          groupByFile: !!options.groupByFile,
+          limit: options.limit ? parseInt(options.limit) : undefined,
+        }),
+      (error) => handleLspError(error, options),
+    );
+  });
+
+navigate
+  .command("type <file:line:col>")
+  .description("Go to type definition")
+  .option("--context <lines>", "Number of context lines to show", "3")
+  .action((location: string, cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+    const [filePath, line, col] = location.split(":");
+    const { projectRoot, resolvedFilePath } = resolveProject(filePath);
+
+    if (!projectRoot) {
+      const msg = `No tsconfig.json found for ${filePath}`;
+      handleLspError(msg, options);
+      return;
+    }
+
+    const request = {
+      action: "typeDefinition",
+      projectRoot,
+      args: [resolvedFilePath, line, col],
+      verbose: options.verbose,
+      logLevel: options.logLevel,
+      trace: options.trace,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) =>
+        handleLspResponse(data, options, "typeDefinition", {
+          file: resolvedFilePath,
+          line: parseInt(line),
+          col: parseInt(col),
+          contextLines: parseInt(options.context),
+        }),
+      (error) => handleLspError(error, options),
+    );
+  });
+
+navigate
+  .command("impl <file:line:col>")
+  .alias("implementation")
+  .description("Find implementations")
+  .option("--context <lines>", "Number of context lines to show", "2")
+  .option("--group-by-file", "Group results by file")
+  .action((location: string, cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+    const [filePath, line, col] = location.split(":");
+    const { projectRoot, resolvedFilePath } = resolveProject(filePath);
+
+    if (!projectRoot) {
+      const msg = `No tsconfig.json found for ${filePath}`;
+      handleLspError(msg, options);
+      return;
+    }
+
+    const request = {
+      action: "implementation",
+      projectRoot,
+      args: [resolvedFilePath, line, col],
+      verbose: options.verbose,
+      logLevel: options.logLevel,
+      trace: options.trace,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) =>
+        handleLspResponse(data, options, "implementation", {
+          file: resolvedFilePath,
+          line: parseInt(line),
+          col: parseInt(col),
+          contextLines: parseInt(options.context),
+          groupByFile: !!options.groupByFile,
+        }),
+      (error) => handleLspError(error, options),
+    );
+  });
+
+// ============================================================================
+// EXPLORE Command Group
+// ============================================================================
+const explore = program
+  .command("explore")
+  .alias("exp")
+  .description("Explore code structure and information");
+
+explore
+  .command("hover <file:line:col>")
+  .description("Show type and documentation")
+  .action((location: string, cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+    const [filePath, line, col] = location.split(":");
+    const { projectRoot, resolvedFilePath } = resolveProject(filePath);
+
+    if (!projectRoot) {
+      const msg = `No tsconfig.json found for ${filePath}`;
+      handleLspError(msg, options);
+      return;
+    }
+
+    const request = {
+      action: "hover",
+      projectRoot,
+      args: [resolvedFilePath, line, col],
+      verbose: options.verbose,
+      logLevel: options.logLevel,
+      trace: options.trace,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) =>
+        handleLspResponse(data, options, "hover", {
+          file: resolvedFilePath,
+          line: parseInt(line),
+          col: parseInt(col),
+        }),
+      (error) => handleLspError(error, options),
+    );
+  });
+
+explore
+  .command("symbols <file>")
+  .description("List document symbols")
+  .option("--query <query>", "Filter symbols by name")
+  .option(
+    "--kind <kind>",
+    "Filter by symbol kind (class|function|variable|etc)",
+  )
+  .action((filePath: string, cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+    const { projectRoot, resolvedFilePath } = resolveProject(filePath);
+
+    if (!projectRoot) {
+      const msg = `No tsconfig.json found for ${filePath}`;
+      handleLspError(msg, options);
+      return;
+    }
+
+    const flags = JSON.stringify({
+      query: options.query,
+      kind: options.kind,
+    });
+
+    const request = {
+      action: "documentSymbols",
+      projectRoot,
+      args: [resolvedFilePath, flags],
+      verbose: options.verbose,
+      logLevel: options.logLevel,
+      trace: options.trace,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) =>
+        handleLspResponse(data, options, "symbols", {
+          file: resolvedFilePath,
+          query: options.query,
+          kind: options.kind,
+        }),
+      (error) => handleLspError(error, options),
+    );
+  });
+
+explore
+  .command("outline <file>")
+  .description("Show file outline")
+  .action((filePath: string, cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+    const { projectRoot, resolvedFilePath } = resolveProject(filePath);
+
+    if (!projectRoot) {
+      const msg = `No tsconfig.json found for ${filePath}`;
+      handleLspError(msg, options);
+      return;
+    }
+
+    const request = {
+      action: "documentSymbols",
+      projectRoot,
+      args: [resolvedFilePath, "{}"],
+      verbose: options.verbose,
+      logLevel: options.logLevel,
+      trace: options.trace,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) =>
+        handleLspResponse(data, options, "outline", {
+          file: resolvedFilePath,
+        }),
+      (error) => handleLspError(error, options),
+    );
+  });
+
+// ============================================================================
+// ANALYZE Command Group
+// ============================================================================
+const analyze = program
+  .command("analyze")
+  .alias("an")
+  .description("Analyze code for issues and improvements");
+
+analyze
+  .command("file <file>")
+  .description("Analyze a single file for diagnostics")
+  .option("--fix", "Show available quick fixes")
+  .action((filePath: string, cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+    const { projectRoot, resolvedFilePath } = resolveProject(filePath);
+
+    if (!projectRoot) {
+      const msg = `No tsconfig.json found for ${filePath}`;
+      handleLspError(msg, options);
+      return;
+    }
+
+    const request = {
+      action: "diagnostics",
+      projectRoot,
+      args: [resolvedFilePath],
+      verbose: options.verbose,
+      logLevel: options.logLevel,
+      trace: options.trace,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) =>
+        handleLspResponse(data, options, "diagnostics", {
+          file: resolvedFilePath,
+          showFixes: !!options.fix,
+        }),
+      (error) => handleLspError(error, options),
+    );
+  });
+
+analyze
+  .command("changed")
+  .description("Analyze changed files (git)")
+  .option("--staged", "Only analyze staged files")
+  .option("--fix", "Show available quick fixes")
+  .action((cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+    const { projectRoot } = resolveProject(process.cwd());
+
+    if (!projectRoot) {
+      const msg = `No tsconfig.json found in current directory`;
+      handleLspError(msg, options);
+      return;
+    }
+
+    const flags = JSON.stringify({
+      staged: !!options.staged,
+      fix: !!options.fix,
+    });
+
+    const request = {
+      action: "inspect:changed",
+      projectRoot,
+      args: [flags],
+      verbose: options.verbose,
+      logLevel: options.logLevel,
+      trace: options.trace,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) =>
+        handleLspResponse(data, options, "analyze-changed", {
+          staged: !!options.staged,
+          showFixes: !!options.fix,
+        }),
+      (error) => handleLspError(error, options),
+    );
+  });
+
+// ============================================================================
+// REFACTOR Command Group
+// ============================================================================
+const refactor = program
+  .command("refactor")
+  .alias("ref")
+  .description("Refactor code safely");
+
+refactor
+  .command("rename <file:line:col> <newName>")
+  .description("Rename symbol across project")
+  .action((location: string, newName: string, cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+
+    if (!options.preview && !options.write) {
+      printTextAndExit(
+        "Error: Rename requires either --preview or --write flag for safety",
+        true,
+        "SAFETY_ERROR",
+      );
+      return;
+    }
+
+    const [filePath, line, col] = location.split(":");
+    const { projectRoot, resolvedFilePath } = resolveProject(filePath);
+
+    if (!projectRoot) {
+      const msg = `No tsconfig.json found for ${filePath}`;
+      handleLspError(msg, options);
+      return;
+    }
+
+    const request = {
+      action: "rename",
+      projectRoot,
+      args: [resolvedFilePath, line, col, newName],
+      verbose: options.verbose,
+      logLevel: options.logLevel,
+      trace: options.trace,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) =>
+        handleLspResponse(data, options, "rename", {
+          file: resolvedFilePath,
+          line: parseInt(line),
+          col: parseInt(col),
+          newName,
+          preview: !!options.preview,
+          write: !!options.write,
+        }),
+      (error) => handleLspError(error, options),
+    );
+  });
+
+refactor
+  .command("organize-imports <file>")
+  .description("Organize and clean up imports")
+  .action((filePath: string, cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+
+    if (!options.preview && !options.write) {
+      printTextAndExit(
+        "Error: Organize imports requires either --preview or --write flag for safety",
+        true,
+        "SAFETY_ERROR",
+      );
+      return;
+    }
+
+    const { projectRoot, resolvedFilePath } = resolveProject(filePath);
+
+    if (!projectRoot) {
+      const msg = `No tsconfig.json found for ${filePath}`;
+      handleLspError(msg, options);
+      return;
+    }
+
+    const request = {
+      action: "organizeImports",
+      projectRoot,
+      args: [resolvedFilePath],
+      verbose: options.verbose,
+      logLevel: options.logLevel,
+      trace: options.trace,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) =>
+        handleLspResponse(data, options, "organize-imports", {
+          file: resolvedFilePath,
+          preview: !!options.preview,
+          write: !!options.write,
+        }),
+      (error) => handleLspError(error, options),
+    );
+  });
+
+// ============================================================================
+// DAEMON Command Group
+// ============================================================================
+const daemon = program.command("daemon").description("Manage the LSP daemon");
+
+daemon
+  .command("start")
+  .description("Start the daemon")
+  .action((cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+    if (isDaemonRunning()) {
+      printTextAndExit("Daemon already running");
+      return;
+    }
+    ensureDaemonRunning(options);
+    printTextAndExit("Daemon started");
+  });
+
+daemon
+  .command("stop")
+  .description("Stop the daemon")
+  .action(() => {
+    if (!isDaemonRunning()) {
+      printTextAndExit("Daemon not running");
+      return;
+    }
+
+    const client = net.connect(SOCKET_PATH, () => {
+      client.write(JSON.stringify({ action: "stop" }));
+    });
+
+    client.on("data", () => {
+      printTextAndExit("Daemon stopped");
+      client.end();
+    });
+
+    client.on("error", () => {
+      printTextAndExit("Failed to stop daemon", true, "DAEMON_ERROR");
+    });
+  });
+
+daemon
+  .command("health")
+  .description("Check health of daemon and LSP servers")
+  .action((cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+
+    if (!isDaemonRunning()) {
+      printTextAndExit("✗ Daemon is not running", true, "DAEMON_ERROR");
+      return;
+    }
+
+    const request = {
+      action: "health",
+      projectRoot: process.cwd(), // Dummy value, not used for health check
+      verbose: options.verbose,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) => {
+        if (data.healthy) {
+          console.log("✓ Daemon is healthy");
+          if (data.sessions) {
+            console.log(`Active sessions: ${data.sessions.length}`);
+            data.sessions.forEach((session: any) => {
+              const status = session.healthy ? "✓" : "✗";
+              console.log(`  ${status} ${session.projectRoot}`);
+            });
+          }
+        } else {
+          console.log("✗ Daemon is unhealthy");
+          if (data.error) {
+            console.log(`  Error: ${data.error}`);
+          }
+          console.log('  Try running "lsp-top daemon restart"');
+        }
+        process.exit(0);
+      },
+      (error) => {
+        console.error("✗ Failed to check daemon health");
+        console.error(`  ${error}`);
+        console.log('  Try running "lsp-top daemon restart"');
+        process.exit(1);
+      },
+    );
+  });
+
+daemon
+  .command("restart")
+  .description("Restart the daemon")
+  .action(async () => {
+    console.log("Stopping daemon...");
+
+    // Stop if running
+    if (isDaemonRunning()) {
+      const stopClient = net.connect(SOCKET_PATH, () => {
+        stopClient.write(JSON.stringify({ action: "stop" }));
+      });
+
+      await new Promise<void>((resolve) => {
+        stopClient.on("data", () => {
+          stopClient.end();
+          resolve();
+        });
+        stopClient.on("error", () => {
+          resolve();
+        });
+      });
+
+      // Wait a moment for cleanup
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    // Start daemon
+    console.log("Starting daemon...");
+    ensureDaemonRunning({});
+    console.log("✓ Daemon restarted");
+    process.exit(0);
+  });
+
+daemon
+  .command("status")
+  .description("Check daemon status")
+  .action((cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+    if (!isDaemonRunning()) {
+      if (options.json) {
+        printJsonAndExit(
+          wrapJsonOutput(result({ ok: false, error: "Daemon not running" })),
+        );
+      } else {
+        printTextAndExit("Daemon not running");
+      }
+      return;
+    }
+
+    const client = net.connect(SOCKET_PATH, () => {
+      client.write(JSON.stringify({ action: "status" }));
+    });
+
+    client.on("data", (data) => {
+      try {
+        const info = JSON.parse(data.toString());
+        if (options.json) {
+          printJsonAndExit(wrapJsonOutput(result({ ok: true, data: info })));
+        } else {
+          printTextAndExit(`Daemon running: ${info.sessions} active sessions`);
+        }
+      } catch {
+        printTextAndExit("Error getting status", true, "DAEMON_ERROR");
+      }
+    });
+
+    client.on("error", () => {
+      printTextAndExit("Failed to connect to daemon", true, "DAEMON_ERROR");
+    });
+  });
+
+daemon
+  .command("logs")
+  .description("Show daemon logs")
+  .option("--tail <n>", "Show last N lines")
+  .option("--follow", "Follow log output")
+  .action((cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+    if (!fs.existsSync(LOG_FILE)) {
+      printTextAndExit("No log file found");
+      return;
+    }
+
+    const readAll = () => fs.readFileSync(LOG_FILE, "utf-8").split("\n");
+    const output = (lines: string[]) => {
+      const filtered = lines.filter(Boolean);
+      if (options.tail) {
+        const n = parseInt(String(options.tail), 10);
+        const start = Math.max(0, filtered.length - (isNaN(n) ? 50 : n));
+        filtered.slice(start).forEach((l) => console.log(l));
+      } else {
+        filtered.forEach((l) => console.log(l));
+      }
+    };
+
+    if (options.follow) {
+      let lastSize = fs.statSync(LOG_FILE).size;
+      output(readAll());
+      const interval = setInterval(() => {
+        try {
+          const stat = fs.statSync(LOG_FILE);
+          if (stat.size > lastSize) {
+            const content = fs.readFileSync(LOG_FILE, "utf-8");
+            const lines = content.split("\n");
+            output(lines);
+            lastSize = stat.size;
+          }
+        } catch {}
+      }, 1000);
+      process.on("SIGINT", () => {
+        clearInterval(interval);
+        process.exit(0);
+      });
+    } else {
+      output(readAll());
+    }
+  });
+
+// Parse and handle global options
+const parsed = program.parse(process.argv);
+const globalOpts = parsed.opts();
+if (globalOpts.logLevel) setLogLevel(String(globalOpts.logLevel) as Level);
+if (globalOpts.trace)
+  setTraceFlags(
+    String(globalOpts.trace)
+      .split(",")
+      .map((s: string) => s.trim())
+      .filter(Boolean),
+  );

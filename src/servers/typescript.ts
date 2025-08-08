@@ -59,50 +59,87 @@ export class TypeScriptLSP {
     await this.client.shutdown();
   }
 
+  async checkHealth(): Promise<boolean> {
+    return await this.client.checkHealth();
+  }
+
   async getDiagnostics(filePath: string): Promise<any> {
     const uri = `file://${filePath}`;
-    const content = fs.readFileSync(filePath, "utf-8");
 
-    if (this.openDocuments.has(uri)) {
-      // Document is already open, send a change notification to trigger re-analysis
-      log("trace", "Document change", { uri });
-      this.client.sendMessage({
-        jsonrpc: "2.0",
-        method: "textDocument/didChange",
-        params: {
-          textDocument: {
-            uri,
-            version: Date.now(), // Use timestamp as version
-          },
-          contentChanges: [
-            {
-              text: content,
-            },
-          ],
-        },
-      });
-    } else {
-      // First time opening this document
-      log("trace", "Opening document", { uri });
-      this.client.sendMessage({
-        jsonrpc: "2.0",
-        method: "textDocument/didOpen",
-        params: {
-          textDocument: {
-            uri,
-            languageId: "typescript",
-            version: 1,
-            text: content,
-          },
-        },
-      });
-      this.openDocuments.add(uri);
+    // Check if file exists
+    if (!fs.existsSync(filePath)) {
+      log("warn", "File not found for diagnostics", { filePath });
+      return {
+        diagnostics: [],
+        error: `File not found: ${path.basename(filePath)}`,
+      };
     }
 
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    return await time("typescript.diagnostics", async () =>
-      this.client.getDiagnostics(uri),
-    );
+    let content: string;
+    try {
+      content = fs.readFileSync(filePath, "utf-8");
+    } catch (error) {
+      log("error", "Failed to read file", { filePath, error: String(error) });
+      return {
+        diagnostics: [],
+        error: `Cannot read file: ${path.basename(filePath)}`,
+      };
+    }
+
+    // Always close and reopen to avoid state issues
+    if (this.openDocuments.has(uri)) {
+      // Close the document first
+      log("debug", "Closing document before reopening", { uri });
+      this.client.sendMessage({
+        jsonrpc: "2.0",
+        method: "textDocument/didClose",
+        params: {
+          textDocument: { uri },
+        },
+      });
+      this.openDocuments.delete(uri);
+      // Small delay to ensure close is processed
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+
+    // Open the document fresh
+    log("info", "Opening document for diagnostics", { uri });
+    this.client.sendMessage({
+      jsonrpc: "2.0",
+      method: "textDocument/didOpen",
+      params: {
+        textDocument: {
+          uri,
+          languageId:
+            path.extname(filePath) === ".tsx"
+              ? "typescriptreact"
+              : "typescript",
+          version: 1,
+          text: content,
+        },
+      },
+    });
+    this.openDocuments.add(uri);
+
+    // Wait for diagnostics to be published
+    log("debug", "Waiting for diagnostics to be published...");
+
+    // Try multiple times with shorter waits
+    for (let attempt = 0; attempt < 5; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const diagnostics = this.client.getDiagnosticsForUri(uri);
+      if (diagnostics.length > 0 || attempt === 4) {
+        log("info", "Diagnostics check complete", {
+          uri,
+          count: diagnostics.length,
+          attempt: attempt + 1,
+        });
+        return { diagnostics };
+      }
+    }
+
+    // Return empty diagnostics if none found
+    return { diagnostics: [] };
   }
 
   async getDefinition(
@@ -345,12 +382,41 @@ export class TypeScriptLSP {
     }
   }
 
-  private async organizeImports(uri: string): Promise<any[]> {
+  async organizeImports(filePath: string): Promise<any> {
+    const uri = `file://${filePath}`;
     const action = await this.client.sendRequest("workspace/executeCommand", {
       command: "_typescript.organizeImports",
       arguments: [{ scope: { type: "file", args: { uri } } }],
     });
-    return Array.isArray(action) ? action : [];
+    const edits = Array.isArray(action) ? action : [];
+    return { changes: { [uri]: edits } };
+  }
+
+  async rename(
+    filePath: string,
+    line: number,
+    character: number,
+    newName: string,
+  ): Promise<any> {
+    const uri = `file://${filePath}`;
+
+    // Open document if not already open
+    if (!this.openDocuments.has(uri)) {
+      const content = require("fs").readFileSync(filePath, "utf-8");
+      await this.client.sendNotification("textDocument/didOpen", {
+        textDocument: {
+          uri,
+          languageId: "typescript",
+          version: 1,
+          text: content,
+        },
+      });
+      this.openDocuments.add(uri);
+    }
+
+    return await time("typescript.rename", async () =>
+      this.client.rename(uri, line, character, newName),
+    );
   }
 
   async inspectFile(
@@ -371,9 +437,11 @@ export class TypeScriptLSP {
     const actionsApplied: string[] = [];
 
     if (flags.organizeImports) {
-      const oi = await this.organizeImports(uri);
-      if (oi.length) {
-        edits.changes![uri] = (edits.changes![uri] || []).concat(oi);
+      const result = await this.organizeImports(filePath);
+      if (result.changes && result.changes[uri]) {
+        edits.changes![uri] = (edits.changes![uri] || []).concat(
+          result.changes[uri],
+        );
         actionsApplied.push("organizeImports");
       }
     }
