@@ -58,7 +58,7 @@ lsp-top navigate impl src/interfaces/Service.ts:3:11
 lsp-top explore hover src/index.ts:10:5
 ```
 
-### List Symbols
+### List Document Symbols
 ```bash
 lsp-top explore symbols src/index.ts
 lsp-top exp symbols src/api.ts --query "user"
@@ -68,6 +68,28 @@ lsp-top exp symbols src/utils.ts --kind function
 ### Get File Outline
 ```bash
 lsp-top explore outline src/components/App.tsx
+```
+
+### Search Project-Wide Symbols
+```bash
+lsp-top explore project-symbols                    # All symbols
+lsp-top explore project-symbols user               # Search for "user"
+lsp-top exp ps --kind class --limit 20            # All classes
+lsp-top exp ps --project ~/other-app              # Different project
+```
+
+### Show Call Hierarchy
+```bash
+lsp-top explore call-hierarchy src/api.ts:25:10 --direction in   # Who calls this?
+lsp-top explore calls src/api.ts:25:10 --direction out          # What does it call?
+lsp-top exp calls src/api.ts:25:10 --direction both            # Both directions
+```
+
+### Show Type Hierarchy
+```bash
+lsp-top explore type-hierarchy src/models/User.ts:5:14 --direction super  # What it extends
+lsp-top explore types src/interface.ts:3:11 --direction sub              # What extends it
+lsp-top exp types src/base.ts:10:7 --direction both                     # Full hierarchy
 ```
 
 ## Analysis Commands
@@ -83,6 +105,15 @@ lsp-top analyze file src/api.ts --fix  # Show quick fixes
 lsp-top analyze changed              # All changed files
 lsp-top analyze changed --staged     # Only staged files
 lsp-top analyze changed --fix        # With quick fixes
+```
+
+### Analyze Entire Project
+```bash
+lsp-top analyze project                           # Current project errors
+lsp-top analyze project --summary                 # Summary only
+lsp-top analyze project --severity warning        # Include warnings
+lsp-top analyze project --project ~/my-app        # Different project
+lsp-top an project --limit 10 --severity error   # Limit output
 ```
 
 ## Refactoring Commands
@@ -195,9 +226,11 @@ lsp-top analyze file src/index.ts --json
 
 1. **Daemon Auto-Management**: The daemon starts automatically when needed and stops after 5 minutes of inactivity
 2. **Project Discovery**: Commands automatically find the nearest `tsconfig.json`
-3. **Safety First**: Refactoring commands require `--preview` or `--write` flag
-4. **Performance**: Keep daemon running for faster responses (sub-100ms)
-5. **Debugging**: Use `--verbose` flag and check daemon logs when issues occur
+3. **Project Selection**: Use `--project <path>` to analyze any project from anywhere
+4. **Project Root Display**: All project commands show which project they're analyzing
+5. **Safety First**: Refactoring commands require `--preview` or `--write` flag
+6. **Performance**: Keep daemon running for faster responses (sub-100ms)
+7. **Debugging**: Use `--verbose` flag and check daemon logs when issues occur
 
 ## Error Recovery
 

@@ -12,8 +12,10 @@ LSP-Top brings IDE-level code intelligence to your terminal. Navigate, explore, 
 - **🔒 Safe refactoring** - Required `--preview`/`--write` flags for dangerous operations
 - **📊 JSON output** - Machine-readable output with schema versioning
 - **🔍 Code navigation** - Jump to definitions, find references, explore types
-- **🛠️ Code analysis** - Get diagnostics, analyze changed files
+- **🛠️ Code analysis** - Get diagnostics, analyze changed files or entire projects
 - **♻️ Code refactoring** - Rename symbols, organize imports
+- **🌍 Project-wide operations** - Search symbols, analyze entire codebases
+- **📞 Call & type hierarchies** - Understand code relationships and inheritance
 
 ## Installation
 
@@ -86,6 +88,15 @@ lsp-top explore symbols <file> [--query <filter>]
 
 # Show file outline (tree view)
 lsp-top explore outline <file>
+
+# Search symbols across entire project
+lsp-top explore project-symbols [query] [--project <path>] [--limit <n>]
+
+# Show call hierarchy (incoming/outgoing calls)
+lsp-top explore call-hierarchy <file:line:col> [--direction <in|out|both>]
+
+# Show type hierarchy (supertypes/subtypes)
+lsp-top explore type-hierarchy <file:line:col> [--direction <super|sub|both>]
 ```
 
 ### 📊 Analyze - Code Analysis
@@ -98,6 +109,9 @@ lsp-top analyze file <file> [--fix]
 
 # Analyze changed files (git)
 lsp-top analyze changed [--staged] [--fix]
+
+# Analyze entire project
+lsp-top analyze project [--project <path>] [--severity <level>] [--summary]
 ```
 
 ### ♻️ Refactor - Code Refactoring
@@ -216,6 +230,42 @@ lsp-top analyze changed --staged --fix
 lsp-top refactor rename src/api.ts:20:5 UserService --preview
 ```
 
+### Search symbols across entire project
+
+```bash
+# Find all classes in project
+lsp-top explore project-symbols --kind class
+
+# Search for "user" related symbols
+lsp-top explore project-symbols user
+
+# Analyze a different project
+lsp-top explore project-symbols --project ~/other-app
+```
+
+### Analyze entire project
+
+```bash
+# Get error summary
+lsp-top analyze project --summary
+
+# Include warnings
+lsp-top analyze project --severity warning
+
+# Analyze specific project
+lsp-top analyze project --project ../my-lib --summary
+```
+
+### Explore call hierarchies
+
+```bash
+# Who calls this function?
+lsp-top explore call-hierarchy src/api.ts:25:10 --direction in
+
+# What does this function call?
+lsp-top explore call-hierarchy src/api.ts:25:10 --direction out
+```
+
 ### Get JSON output for automation
 
 ```bash
@@ -251,9 +301,55 @@ Typical response times:
 └─────────────┘                         └─────────────┘
 ```
 
-## Configuration
+## Project Discovery
 
-LSP-Top automatically discovers TypeScript projects by finding the nearest `tsconfig.json`. No manual configuration required!
+LSP-Top automatically discovers TypeScript projects by finding the nearest `tsconfig.json`. 
+
+### How It Works
+
+1. **For file-specific commands**: Walks up from the file to find the nearest `tsconfig.json`
+2. **For project-wide commands**: Uses current directory or `--project` option
+3. **Shows project root**: All project commands display which project they're analyzing
+
+### Specifying Projects
+
+```bash
+# Use current directory (default)
+lsp-top analyze project
+
+# Specify project by directory
+lsp-top analyze project --project ~/my-app
+
+# Specify project by any file within it
+lsp-top explore project-symbols --project src/index.ts
+
+# Use relative paths
+lsp-top analyze project --project ../other-project
+
+# Work from anywhere
+cd /anywhere
+lsp-top analyze project --project /path/to/project
+```
+
+### Monorepo Support
+
+In monorepos with multiple `tsconfig.json` files, LSP-Top uses the nearest one:
+
+```
+monorepo/
+├── packages/
+│   ├── app/          # Has tsconfig.json
+│   └── lib/          # Has tsconfig.json
+└── tsconfig.json     # Root config
+```
+
+```bash
+cd packages/app
+lsp-top analyze project  # Analyzes only 'app' package
+
+cd ../..
+lsp-top analyze project  # Analyzes entire monorepo
+```
 
 ## Troubleshooting
 

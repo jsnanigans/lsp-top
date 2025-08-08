@@ -294,12 +294,6 @@ export class TypeScriptLSP {
     );
   }
 
-  async getWorkspaceSymbols(query: string): Promise<any> {
-    return await time("typescript.workspaceSymbols", async () =>
-      this.client.getWorkspaceSymbols(query),
-    );
-  }
-
   async getHover(
     filePath: string,
     line: number,
@@ -592,10 +586,10 @@ export class TypeScriptLSP {
   async inspectChanged(
     flags: {
       staged?: boolean;
-      organizeImports?: boolean;
-      format?: boolean;
       fix?: boolean;
       fixDry?: boolean;
+      organizeImports?: boolean;
+      format?: boolean;
       write?: boolean;
     } = {},
   ) {
@@ -610,5 +604,114 @@ export class TypeScriptLSP {
       out[f] = await this.inspectFile(f, flags as any);
     }
     return out;
+  }
+
+  async getWorkspaceSymbols(query: string): Promise<any> {
+    return await time("typescript.workspaceSymbols", async () =>
+      this.client.getWorkspaceSymbols(query),
+    );
+  }
+
+  async prepareCallHierarchy(
+    filePath: string,
+    line: number,
+    character: number,
+  ): Promise<any> {
+    const uri = `file://${filePath}`;
+
+    // Open document if not already open
+    if (!this.openDocuments.has(uri)) {
+      const content = require("fs").readFileSync(filePath, "utf-8");
+      await this.client.sendNotification("textDocument/didOpen", {
+        textDocument: {
+          uri,
+          languageId: "typescript",
+          version: 1,
+          text: content,
+        },
+      });
+      this.openDocuments.add(uri);
+    }
+
+    return await this.client.sendRequest("textDocument/prepareCallHierarchy", {
+      textDocument: { uri },
+      position: { line, character },
+    });
+  }
+
+  async getIncomingCalls(item: any): Promise<any> {
+    return await this.client.sendRequest("callHierarchy/incomingCalls", {
+      item,
+    });
+  }
+
+  async getOutgoingCalls(item: any): Promise<any> {
+    return await this.client.sendRequest("callHierarchy/outgoingCalls", {
+      item,
+    });
+  }
+
+  async prepareTypeHierarchy(
+    filePath: string,
+    line: number,
+    character: number,
+  ): Promise<any> {
+    const uri = `file://${filePath}`;
+
+    // Open document if not already open
+    if (!this.openDocuments.has(uri)) {
+      const content = require("fs").readFileSync(filePath, "utf-8");
+      await this.client.sendNotification("textDocument/didOpen", {
+        textDocument: {
+          uri,
+          languageId: "typescript",
+          version: 1,
+          text: content,
+        },
+      });
+      this.openDocuments.add(uri);
+    }
+
+    return await this.client.sendRequest("textDocument/prepareTypeHierarchy", {
+      textDocument: { uri },
+      position: { line, character },
+    });
+  }
+
+  async getSupertypes(item: any): Promise<any> {
+    return await this.client.sendRequest("typeHierarchy/supertypes", {
+      item,
+    });
+  }
+
+  async getSubtypes(item: any): Promise<any> {
+    return await this.client.sendRequest("typeHierarchy/subtypes", {
+      item,
+    });
+  }
+
+  async getAllTypeScriptFiles(): Promise<string[]> {
+    const { glob } = require("glob");
+
+    // Find all TypeScript files in the workspace
+    const pattern = "**/*.{ts,tsx}";
+    try {
+      const files = await glob(pattern, {
+        cwd: this.workspaceRoot,
+        ignore: [
+          "**/node_modules/**",
+          "**/dist/**",
+          "**/build/**",
+          "**/.git/**",
+          "**/coverage/**",
+        ],
+        absolute: true,
+      });
+
+      return files as string[];
+    } catch (error) {
+      log("error", "Failed to glob TypeScript files", { error: String(error) });
+      return [];
+    }
   }
 }

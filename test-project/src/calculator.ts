@@ -9,6 +9,7 @@ export class Calculator {
    * @returns The sum of a and b
    */
   add(a: number, b: number): number {
+    // Simple addition
     return a + b;
   }
 

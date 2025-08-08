@@ -21,10 +21,14 @@ Manual CLI testing:
 - Hover: node dist/cli.js explore hover src/calculator.ts:4:14
 - Symbols: node dist/cli.js explore symbols src/index.ts [--query <filter>]
 - Outline: node dist/cli.js explore outline src/index.ts
+- Project symbols: node dist/cli.js explore project-symbols [query] [--project <path>] [--limit <n>] [--kind <type>]
+- Call hierarchy: node dist/cli.js explore call-hierarchy src/api.ts:25:10 [--direction <in|out|both>]
+- Type hierarchy: node dist/cli.js explore type-hierarchy src/models/User.ts:5:14 [--direction <super|sub|both>]
 
 ## Analyze Commands
 - File diagnostics: node dist/cli.js analyze file src/index.ts [--fix]
 - Changed files: node dist/cli.js analyze changed [--staged] [--fix]
+- Project diagnostics: node dist/cli.js analyze project [--project <path>] [--severity <level>] [--summary] [--limit <n>]
 
 ## Refactor Commands (require --preview or --write)
 - Rename: node dist/cli.js refactor rename src/file.ts:10:5 NewName --preview
@@ -47,6 +51,8 @@ Note:
 - Daemon starts automatically when any command is run
 - Daemon stops automatically after 5 minutes of inactivity
 - Projects are discovered by finding nearest tsconfig.json
+- Use --project <path> to specify a different project for project-wide commands
+- All project commands display the project root being analyzed
 - All paths can be relative or absolute
 - No manual project/alias management required!
 

@@ -394,6 +394,184 @@ class Daemon {
           return { ...result, timing: timer() };
         }
 
+        case "workspaceSymbols": {
+          const [flags] = args;
+          const options = flags ? JSON.parse(flags) : {};
+          const result = await lsp.getWorkspaceSymbols(options.query || "");
+
+          // Filter by kind if specified
+          let symbols = result;
+          if (options.kind) {
+            symbols = this.filterSymbolsByKind(symbols, options.kind);
+          }
+
+          // Apply limit
+          if (options.limit && symbols.length > options.limit) {
+            symbols = symbols.slice(0, options.limit);
+          }
+
+          return { symbols, timing: timer() };
+        }
+
+        case "callHierarchy": {
+          const [file, line, col, flags] = args;
+          const options = flags ? JSON.parse(flags) : {};
+
+          // Prepare call hierarchy item
+          const prepareResult = await lsp.prepareCallHierarchy(
+            file,
+            parseInt(line, 10),
+            parseInt(col, 10),
+          );
+
+          if (!prepareResult || prepareResult.length === 0) {
+            return {
+              error: "No call hierarchy available at this position",
+              timing: timer(),
+            };
+          }
+
+          const item = prepareResult[0];
+          const result: any = { item };
+
+          // Get incoming calls if requested
+          if (options.direction === "in" || options.direction === "both") {
+            result.incoming = await lsp.getIncomingCalls(item);
+          }
+
+          // Get outgoing calls if requested
+          if (options.direction === "out" || options.direction === "both") {
+            result.outgoing = await lsp.getOutgoingCalls(item);
+          }
+
+          return { ...result, timing: timer() };
+        }
+
+        case "typeHierarchy": {
+          const [file, line, col, flags] = args;
+          const options = flags ? JSON.parse(flags) : {};
+
+          // Prepare type hierarchy item
+          const prepareResult = await lsp.prepareTypeHierarchy(
+            file,
+            parseInt(line, 10),
+            parseInt(col, 10),
+          );
+
+          if (!prepareResult || prepareResult.length === 0) {
+            return {
+              error: "No type hierarchy available at this position",
+              timing: timer(),
+            };
+          }
+
+          const item = prepareResult[0];
+          const result: any = { item };
+
+          // Get supertypes if requested
+          if (options.direction === "super" || options.direction === "both") {
+            result.supertypes = await lsp.getSupertypes(item);
+          }
+
+          // Get subtypes if requested
+          if (options.direction === "sub" || options.direction === "both") {
+            result.subtypes = await lsp.getSubtypes(item);
+          }
+
+          return { ...result, timing: timer() };
+        }
+
+        case "projectDiagnostics": {
+          const [flags] = args;
+          const options = flags ? JSON.parse(flags) : {};
+
+          // Get all TypeScript files in project
+          const files = await lsp.getAllTypeScriptFiles();
+          const diagnosticsMap = new Map<string, any[]>();
+          let totalErrors = 0;
+          let totalWarnings = 0;
+          let totalInfo = 0;
+          let totalHints = 0;
+
+          // Collect diagnostics for all files
+          for (const file of files) {
+            try {
+              const result = await lsp.getDiagnostics(file);
+              if (result.diagnostics && result.diagnostics.length > 0) {
+                // Filter by severity
+                const filtered = this.filterDiagnosticsBySeverity(
+                  result.diagnostics,
+                  options.severity,
+                );
+
+                if (filtered.length > 0) {
+                  diagnosticsMap.set(file, filtered);
+
+                  // Count by severity
+                  for (const diag of filtered) {
+                    switch (diag.severity) {
+                      case 1:
+                        totalErrors++;
+                        break;
+                      case 2:
+                        totalWarnings++;
+                        break;
+                      case 3:
+                        totalInfo++;
+                        break;
+                      case 4:
+                        totalHints++;
+                        break;
+                    }
+                  }
+                }
+              }
+            } catch (error) {
+              log("warn", "Failed to get diagnostics for file", {
+                file,
+                error: String(error),
+              });
+            }
+          }
+
+          // Prepare result
+          if (options.summary) {
+            return {
+              summary: {
+                filesAnalyzed: files.length,
+                filesWithIssues: diagnosticsMap.size,
+                errors: totalErrors,
+                warnings: totalWarnings,
+                info: totalInfo,
+                hints: totalHints,
+              },
+              timing: timer(),
+            };
+          }
+
+          // Convert map to array and apply limit
+          let filesWithIssues = Array.from(diagnosticsMap.entries()).map(
+            ([file, diagnostics]) => ({ file, diagnostics }),
+          );
+
+          if (options.limit && filesWithIssues.length > options.limit) {
+            filesWithIssues = filesWithIssues.slice(0, options.limit);
+          }
+
+          return {
+            files: filesWithIssues,
+            summary: {
+              filesAnalyzed: files.length,
+              filesWithIssues: diagnosticsMap.size,
+              errors: totalErrors,
+              warnings: totalWarnings,
+              info: totalInfo,
+              hints: totalHints,
+            },
+            timing: timer(),
+          };
+        }
+
         case "health": {
           const sessions: Array<{ projectRoot: string; healthy: boolean }> = [];
           for (const [root, session] of this.projects) {
@@ -444,6 +622,57 @@ class Daemon {
     }
 
     return result;
+  }
+
+  private filterSymbolsByKind(symbols: any[], kind: string): any[] {
+    const kindMap: Record<string, number> = {
+      file: 1,
+      module: 2,
+      namespace: 3,
+      package: 4,
+      class: 5,
+      method: 6,
+      property: 7,
+      field: 8,
+      constructor: 9,
+      enum: 10,
+      interface: 11,
+      function: 12,
+      variable: 13,
+      constant: 14,
+      string: 15,
+      number: 16,
+      boolean: 17,
+      array: 18,
+      object: 19,
+      key: 20,
+      null: 21,
+      enummember: 22,
+      struct: 23,
+      event: 24,
+      operator: 25,
+      typeparameter: 26,
+    };
+
+    const targetKind = kindMap[kind.toLowerCase()];
+    if (!targetKind) return symbols;
+
+    return symbols.filter((symbol) => symbol.kind === targetKind);
+  }
+
+  private filterDiagnosticsBySeverity(
+    diagnostics: any[],
+    severity: string,
+  ): any[] {
+    const severityMap: Record<string, number> = {
+      error: 1,
+      warning: 2,
+      info: 3,
+      hint: 4,
+    };
+
+    const minSeverity = severityMap[severity.toLowerCase()] || 1;
+    return diagnostics.filter((d) => d.severity && d.severity <= minSeverity);
   }
 }
 

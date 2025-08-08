@@ -567,6 +567,197 @@ explore
     );
   });
 
+explore
+  .command("project-symbols [query]")
+  .alias("ps")
+  .description("Search symbols across entire project")
+  .option(
+    "--project <path>",
+    "Project directory or file to find tsconfig.json from",
+  )
+  .option("--limit <n>", "Limit number of results", "50")
+  .option(
+    "--kind <kind>",
+    "Filter by symbol kind (class|function|variable|etc)",
+  )
+  .addHelpText(
+    "after",
+    `
+Examples:
+  # List all symbols in current project
+  $ lsp-top explore project-symbols
+  
+  # Search in a specific project
+  $ lsp-top explore project-symbols --project ~/my-app
+  
+  # Search for symbols containing "user"
+  $ lsp-top explore project-symbols user
+  
+  # Find all classes in project
+  $ lsp-top explore project-symbols --kind class
+  
+  # Search with limit
+  $ lsp-top exp ps "handle" --limit 20`,
+  )
+  .action((query: string = "", cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+
+    // Use provided project path or current directory
+    const searchPath = options.project
+      ? path.resolve(options.project)
+      : process.cwd();
+    const { projectRoot } = resolveProject(searchPath);
+
+    if (!projectRoot) {
+      const msg = `No tsconfig.json found from ${searchPath}`;
+      handleLspError(msg, options);
+      return;
+    }
+
+    const flags = JSON.stringify({
+      query,
+      limit: parseInt(options.limit),
+      kind: options.kind,
+    });
+
+    const request = {
+      action: "workspaceSymbols",
+      projectRoot,
+      args: [flags],
+      verbose: options.verbose,
+      logLevel: options.logLevel,
+      trace: options.trace,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) =>
+        handleLspResponse(data, options, "workspaceSymbols", {
+          projectRoot,
+          query,
+          limit: parseInt(options.limit),
+          kind: options.kind,
+        }),
+      (error) => handleLspError(error, options),
+    );
+  });
+
+explore
+  .command("call-hierarchy <file:line:col>")
+  .alias("calls")
+  .description("Show incoming and outgoing calls for a function")
+  .option("--direction <dir>", "Direction: in|out|both", "both")
+  .option("--depth <n>", "Maximum depth to traverse", "2")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  # Show all callers of a function
+  $ lsp-top explore call-hierarchy src/utils.ts:10:5 --direction in
+  
+  # Show what a function calls
+  $ lsp-top explore calls src/api.ts:25:10 --direction out
+  
+  # Show both directions with depth
+  $ lsp-top exp calls src/service.ts:15:8 --depth 3`,
+  )
+  .action((location: string, cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+    const [filePath, line, col] = location.split(":");
+    const { projectRoot, resolvedFilePath } = resolveProject(filePath);
+
+    if (!projectRoot) {
+      const msg = `No tsconfig.json found for ${filePath}`;
+      handleLspError(msg, options);
+      return;
+    }
+
+    const flags = JSON.stringify({
+      direction: options.direction,
+      depth: parseInt(options.depth),
+    });
+
+    const request = {
+      action: "callHierarchy",
+      projectRoot,
+      args: [resolvedFilePath, line, col, flags],
+      verbose: options.verbose,
+      logLevel: options.logLevel,
+      trace: options.trace,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) =>
+        handleLspResponse(data, options, "callHierarchy", {
+          file: resolvedFilePath,
+          line: parseInt(line),
+          col: parseInt(col),
+          direction: options.direction,
+          depth: parseInt(options.depth),
+        }),
+      (error) => handleLspError(error, options),
+    );
+  });
+
+explore
+  .command("type-hierarchy <file:line:col>")
+  .alias("types")
+  .description("Show type hierarchy (supertypes and subtypes)")
+  .option("--direction <dir>", "Direction: super|sub|both", "both")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  # Show what a class extends/implements
+  $ lsp-top explore type-hierarchy src/models/User.ts:5:14 --direction super
+  
+  # Show what extends/implements an interface
+  $ lsp-top explore types src/interfaces/Service.ts:3:11 --direction sub
+  
+  # Show full hierarchy
+  $ lsp-top exp types src/base/Component.ts:10:7`,
+  )
+  .action((location: string, cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+    const [filePath, line, col] = location.split(":");
+    const { projectRoot, resolvedFilePath } = resolveProject(filePath);
+
+    if (!projectRoot) {
+      const msg = `No tsconfig.json found for ${filePath}`;
+      handleLspError(msg, options);
+      return;
+    }
+
+    const flags = JSON.stringify({
+      direction: options.direction,
+    });
+
+    const request = {
+      action: "typeHierarchy",
+      projectRoot,
+      args: [resolvedFilePath, line, col, flags],
+      verbose: options.verbose,
+      logLevel: options.logLevel,
+      trace: options.trace,
+    };
+
+    sendDaemonRequest(
+      request,
+      options,
+      (data) =>
+        handleLspResponse(data, options, "typeHierarchy", {
+          file: resolvedFilePath,
+          line: parseInt(line),
+          col: parseInt(col),
+          direction: options.direction,
+        }),
+      (error) => handleLspError(error, options),
+    );
+  });
+
 // ============================================================================
 // ANALYZE Command Group
 // ============================================================================
@@ -586,6 +777,9 @@ Examples:
   
   # Analyze all changed files (git)
   $ lsp-top analyze changed
+  
+  # Analyze changed files in a specific project
+  $ lsp-top analyze changed --project ./packages/frontend
   
   # Analyze only staged files
   $ lsp-top analyze changed --staged --fix`,
@@ -639,23 +833,214 @@ analyze
   .description("Analyze changed files (git)")
   .option("--staged", "Only analyze staged files")
   .option("--fix", "Show available quick fixes")
+  .option("--project <path>", "Project directory to filter changed files")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  # Analyze all changed files in repository
+  $ lsp-top analyze changed
+  
+  # Analyze changed files in specific project (monorepo)
+  $ lsp-top analyze changed --project ./packages/api
+  
+  # Analyze only staged files
+  $ lsp-top analyze changed --staged
+  
+  # Show quick fixes for issues
+  $ lsp-top analyze changed --fix
+  
+  # Combine options
+  $ lsp-top analyze changed --project ./apps/web --staged --fix`,
+  )
   .action((cmdOptions) => {
     const options = { ...program.opts(), ...cmdOptions };
-    const { projectRoot } = resolveProject(process.cwd());
+
+    // Get git root
+    let gitRoot: string;
+    try {
+      gitRoot = execSync("git rev-parse --show-toplevel", {
+        encoding: "utf-8",
+      }).trim();
+    } catch {
+      handleLspError("Not in a git repository", options);
+      return;
+    }
+
+    // Determine project root if --project is specified
+    let targetProjectRoot: string | undefined;
+    if (options.project) {
+      const searchPath = path.resolve(options.project);
+      const { projectRoot } = resolveProject(searchPath);
+      if (!projectRoot) {
+        handleLspError(`No tsconfig.json found from ${searchPath}`, options);
+        return;
+      }
+      targetProjectRoot = projectRoot;
+    }
+
+    // Get changed files
+    const gitCmd = options.staged
+      ? "git diff --cached --name-only"
+      : "git diff --name-only HEAD";
+
+    let changedFiles: string[];
+    try {
+      changedFiles = execSync(gitCmd, { encoding: "utf-8" })
+        .trim()
+        .split("\n")
+        .filter((f) => f.endsWith(".ts") || f.endsWith(".tsx"))
+        .map((f) => path.resolve(gitRoot, f));
+
+      // Filter to only files within the target project if specified
+      if (targetProjectRoot) {
+        changedFiles = changedFiles.filter((f) => {
+          // Check if file is within the project directory
+          const relative = path.relative(targetProjectRoot, f);
+          return !relative.startsWith("..");
+        });
+      }
+    } catch {
+      changedFiles = [];
+    }
+
+    if (changedFiles.length === 0) {
+      if (options.json) {
+        printJsonAndExit(
+          wrapJsonOutput(result({ ok: true, data: { files: [] } })),
+        );
+      } else {
+        const message = targetProjectRoot
+          ? `No TypeScript files changed in project ${targetProjectRoot}`
+          : "No TypeScript files changed";
+        printTextAndExit(message);
+      }
+      return;
+    }
+
+    // Process each file
+    const results: any[] = [];
+    let completed = 0;
+
+    changedFiles.forEach((filePath) => {
+      // If --project was specified, use that project root for all files
+      // Otherwise, resolve each file's project independently
+      let projectRoot: string | null;
+      let resolvedFilePath: string;
+
+      if (targetProjectRoot) {
+        projectRoot = targetProjectRoot;
+        resolvedFilePath = filePath;
+      } else {
+        const resolved = resolveProject(filePath);
+        projectRoot = resolved.projectRoot;
+        resolvedFilePath = resolved.resolvedFilePath;
+      }
+
+      if (!projectRoot) {
+        results.push({
+          file: filePath,
+          error: "No tsconfig.json found",
+        });
+        completed++;
+        if (completed === changedFiles.length) {
+          handleLspResponse({ files: results }, options, "analyze-changed", {
+            staged: options.staged,
+          });
+        }
+        return;
+      }
+
+      const request = {
+        action: "diagnostics",
+        projectRoot,
+        args: [resolvedFilePath],
+        verbose: options.verbose,
+        logLevel: options.logLevel,
+        trace: options.trace,
+      };
+
+      sendDaemonRequest(
+        request,
+        options,
+        (data) => {
+          results.push({ file: resolvedFilePath, ...data });
+          completed++;
+          if (completed === changedFiles.length) {
+            handleLspResponse({ files: results }, options, "analyze-changed", {
+              staged: options.staged,
+            });
+          }
+        },
+        (error) => {
+          results.push({ file: resolvedFilePath, error });
+          completed++;
+          if (completed === changedFiles.length) {
+            handleLspResponse({ files: results }, options, "analyze-changed", {
+              staged: options.staged,
+            });
+          }
+        },
+      );
+    });
+  });
+
+analyze
+  .command("project")
+  .description("Analyze entire project for diagnostics")
+  .option(
+    "--project <path>",
+    "Project directory or file to find tsconfig.json from",
+  )
+  .option(
+    "--severity <level>",
+    "Minimum severity (error|warning|info|hint)",
+    "error",
+  )
+  .option("--limit <n>", "Limit number of files with issues shown", "20")
+  .option("--summary", "Show summary only")
+  .addHelpText(
+    "after",
+    `
+Examples:
+  # Get all errors in current project
+  $ lsp-top analyze project
+  
+  # Analyze a specific project
+  $ lsp-top analyze project --project ~/my-app
+  
+  # Include warnings
+  $ lsp-top analyze project --severity warning
+  
+  # Get summary of issues
+  $ lsp-top analyze project --summary
+  
+  # Limit output
+  $ lsp-top an project --limit 10`,
+  )
+  .action((cmdOptions) => {
+    const options = { ...program.opts(), ...cmdOptions };
+
+    // Use provided project path or current directory
+    const searchPath = options.project
+      ? path.resolve(options.project)
+      : process.cwd();
+    const { projectRoot } = resolveProject(searchPath);
 
     if (!projectRoot) {
-      const msg = `No tsconfig.json found in current directory`;
+      const msg = `No tsconfig.json found from ${searchPath}`;
       handleLspError(msg, options);
       return;
     }
 
     const flags = JSON.stringify({
-      staged: !!options.staged,
-      fix: !!options.fix,
+      severity: options.severity,
+      limit: parseInt(options.limit),
+      summary: !!options.summary,
     });
 
     const request = {
-      action: "inspect:changed",
+      action: "projectDiagnostics",
       projectRoot,
       args: [flags],
       verbose: options.verbose,
@@ -667,9 +1052,11 @@ analyze
       request,
       options,
       (data) =>
-        handleLspResponse(data, options, "analyze-changed", {
-          staged: !!options.staged,
-          showFixes: !!options.fix,
+        handleLspResponse(data, options, "projectDiagnostics", {
+          projectRoot,
+          severity: options.severity,
+          limit: parseInt(options.limit),
+          summary: !!options.summary,
         }),
       (error) => handleLspError(error, options),
     );
