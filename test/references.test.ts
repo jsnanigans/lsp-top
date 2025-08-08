@@ -10,22 +10,52 @@ const TEST_PROJECT = path.resolve(__dirname, '../test-project');
 function runCLI(args: string[]) {
   const res = spawnSync(process.execPath, [CLI, ...args], { 
     encoding: 'utf-8',
-    env: { ...process.env, NODE_ENV: 'test' }
+    env: { ...process.env, NODE_ENV: 'test' },
+    cwd: path.resolve(__dirname, '..')  // Run from project root
   });
   return res;
 }
 
 describe('References Command', () => {
-  beforeAll(() => {
-    // Ensure test alias is set up
-    runCLI(['init', 'test', TEST_PROJECT]);
-  });
-
   describe('CLI Integration', () => {
     it('should require position argument', () => {
-      const res = runCLI(['run', 'test', 'references']);
+      const res = runCLI(['refs']);
       expect(res.status).not.toBe(0);
-      expect(res.stderr).toContain('File path and position required');
+      expect(res.stderr).toContain('missing required argument');
+    });
+
+    it('should validate position format', () => {
+      const res = runCLI(['refs', 'file.ts:invalid']);
+      expect(res.status).not.toBe(0);
+      expect(res.stderr).toContain('Invalid');
+    });
+
+    it('should accept valid position format and return references', () => {
+      const res = runCLI(['refs', 'test-project/src/types/user.ts:7:18', '--json']);
+      // Should succeed and return an array of references
+      expect(res.status).toBe(0);
+      const output = JSON.parse(res.stdout);
+      expect(output).toHaveProperty('data');
+      expect(Array.isArray(output.data)).toBe(true);
+    });
+
+    it('should pass includeDeclaration flag when specified', () => {
+      const res = runCLI(['refs', 'test-project/src/types/user.ts:7:18', '--include-declaration', '--json']);
+      expect(res.status).toBe(0);
+      const output = JSON.parse(res.stdout);
+      expect(output).toHaveProperty('data');
+      expect(Array.isArray(output.data)).toBe(true);
+    });
+
+    it('should work with JSON output flag', () => {
+      const res = runCLI(['refs', 'test-project/src/types/user.ts:7:18', '--json']);
+      expect(res.status).toBe(0);
+      
+      // The output should be valid JSON
+      const output = JSON.parse(res.stdout);
+      expect(output).toHaveProperty('schemaVersion');
+      expect(output).toHaveProperty('data');
+      expect(Array.isArray(output.data)).toBe(true);
     });
 
     it('should validate position format', () => {

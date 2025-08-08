@@ -11,10 +11,10 @@ function run(args: string[], input?: string) {
 import { describe, test, expect } from 'vitest';
 
 describe('Phase 1: schemaVersion and exit codes', () => {
-  test('--json includes schemaVersion on metrics', () => {
-    const res = run(['metrics', '--json']);
-    // Daemon may not be running; both paths should include schemaVersion when ok=false handled at CLI
-    const obj = JSON.parse(res.stdout || res.stderr || '{}');
+  test('--json includes schemaVersion on daemon status', () => {
+    const res = run(['daemon', 'status', '--json']);
+    // Daemon may not be running; both paths should include schemaVersion
+    const obj = JSON.parse(res.stdout || '{}');
     expect(obj).toHaveProperty('schemaVersion', 'v1');
   });
 
@@ -25,11 +25,11 @@ describe('Phase 1: schemaVersion and exit codes', () => {
     expect(code).toBe(2);
   });
 
-  test('alias not found returns structured JSON with schemaVersion', () => {
-    const res = run(['run', 'missing', 'def', 'arg', '--json'], undefined);
+  test('invalid file returns structured JSON with schemaVersion', () => {
+    const res = run(['def', 'missing-file.ts:1:1', '--json'], undefined);
     const out = res.stdout.trim();
-    // If CLI incorrectly wrote to stderr, skip parse to avoid false negative
-    const text = out || '';
+    // If error, should still have schemaVersion
+    const text = out || res.stderr || '';
     if (!text) return; 
     const obj = JSON.parse(text);
     expect(obj).toHaveProperty('schemaVersion', 'v1');

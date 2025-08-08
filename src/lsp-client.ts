@@ -247,6 +247,29 @@ export class LSPClient {
             openClose: true,
             change: 1,
           },
+          hover: {
+            dynamicRegistration: false,
+            contentFormat: ["plaintext", "markdown"],
+          },
+          definition: {
+            dynamicRegistration: false,
+            linkSupport: false,
+          },
+          references: {
+            dynamicRegistration: false,
+          },
+          documentSymbol: {
+            dynamicRegistration: false,
+            hierarchicalDocumentSymbolSupport: true,
+          },
+          typeDefinition: {
+            dynamicRegistration: false,
+            linkSupport: false,
+          },
+          implementation: {
+            dynamicRegistration: false,
+            linkSupport: false,
+          },
           publishDiagnostics: {
             relatedInformation: true,
             versionSupport: false,

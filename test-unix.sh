@@ -3,19 +3,23 @@ set -e
 
 echo "Testing Unix-compatible output..."
 
-# Test 1: Check TSV output
-echo -n "Test 1: TSV output format... "
-output=$(cd test-project && node ../dist/cli.js check src/index.ts | head -1)
-fields=$(echo "$output" | awk -F'\t' '{print NF}')
-if [ "$fields" -ge 5 ]; then
+# Ensure daemon is running
+node dist/cli.js daemon restart >/dev/null 2>&1
+sleep 2
+
+# Test 1: Check compiler-style output format
+echo -n "Test 1: Compiler-style output format... "
+output=$(node dist/cli.js check test-project/src/index.ts | head -1)
+# Check for pattern: file:line:col: severity code: message
+if echo "$output" | grep -qE '^[^:]+:[0-9]+:[0-9]+: (error|warning|hint) TS[0-9]+:'; then
   echo "PASS"
 else
-  echo "FAIL (expected at least 5 fields, got $fields)"
+  echo "FAIL (expected compiler-style format)"
 fi
 
 # Test 2: Grep filtering
 echo -n "Test 2: Grep filtering... "
-errors=$(cd test-project && node ../dist/cli.js check src/index.ts | grep -c error)
+errors=$(node dist/cli.js check test-project/src/index.ts | grep -c error)
 if [ "$errors" -eq 2 ]; then
   echo "PASS"
 else
@@ -24,7 +28,7 @@ fi
 
 # Test 3: Cut and count
 echo -n "Test 3: Cut and count... "
-error_count=$(cd test-project && node ../dist/cli.js check src/index.ts | cut -f4 | grep -c error)
+error_count=$(node dist/cli.js check test-project/src/index.ts | cut -f4 | grep -c error)
 if [ "$error_count" -eq 2 ]; then
   echo "PASS"
 else
@@ -33,8 +37,8 @@ fi
 
 # Test 4: JSON output
 echo -n "Test 4: JSON output... "
-json=$(cd test-project && node ../dist/cli.js check src/index.ts --json)
-if echo "$json" | jq -e '.command == "diagnostics"' > /dev/null; then
+json=$(node dist/cli.js check test-project/src/index.ts --json)
+if echo "$json" | jq -e '.schemaVersion == "v1"' > /dev/null 2>&1; then
   echo "PASS"
 else
   echo "FAIL (invalid JSON structure)"
@@ -42,7 +46,7 @@ fi
 
 # Test 5: No decorative output
 echo -n "Test 5: No decorative characters... "
-output=$(cd test-project && node ../dist/cli.js check src/index.ts)
+output=$(node dist/cli.js check test-project/src/index.ts)
 if echo "$output" | grep -E '[📄🔍✅🔴🟡╭╮╰╯]'; then
   echo "FAIL (found decorative characters)"
 else

@@ -4,40 +4,39 @@ import * as path from 'path';
 
 const CLI = path.resolve(__dirname, '../dist/cli.js');
 
-describe('References Command - Implementation Plan Compliance', () => {
-  it('should match the command structure from implementation plan', () => {
-    // According to the implementation plan, the command should be:
-    // lsp-top run <alias> references <position> [--include-declaration]
+describe('References Command - New Unix-style Structure', () => {
+  it('should match the new command structure', () => {
+    // New command structure: lsp-top refs <position> [--include-declaration]
     
     // Test the exact command structure
     const res = spawnSync(process.execPath, [
       CLI, 
-      'run', 
-      'test', 
-      'references', 
-      'src/types/user.ts:1:17',
-      '--include-declaration'
+      'refs', 
+      'test-project/src/types/user.ts:7:18',
+      '--include-declaration',
+      '--json'
     ], { 
-      encoding: 'utf-8' 
+      encoding: 'utf-8',
+      cwd: path.resolve(__dirname, '..')
     });
     
     // Should succeed with the correct command structure
     expect(res.status).toBe(0);
     const output = JSON.parse(res.stdout);
-    expect(Array.isArray(output)).toBe(true);
+    expect(output).toHaveProperty('data');
+    expect(Array.isArray(output.data)).toBe(true);
   });
   
-  it('should accept flags as specified in the plan', () => {
-    // The plan specifies: flags.includeDeclaration
+  it('should accept flags as specified', () => {
     const res = spawnSync(process.execPath, [
       CLI,
-      'run',
-      'test', 
-      'references',
-      'src/types/user.ts:1:17',
-      '--include-declaration'
+      'refs',
+      'test-project/src/types/user.ts:7:18',
+      '--include-declaration',
+      '--json'
     ], {
-      encoding: 'utf-8'
+      encoding: 'utf-8',
+      cwd: path.resolve(__dirname, '..')
     });
     
     // The flag should be recognized by the CLI parser
@@ -56,12 +55,11 @@ describe('References Command - Implementation Plan Compliance', () => {
     invalidFormats.forEach(position => {
       const res = spawnSync(process.execPath, [
         CLI,
-        'run',
-        'test',
-        'references',
+        'refs',
         position
       ], {
-        encoding: 'utf-8'
+        encoding: 'utf-8',
+        cwd: path.resolve(__dirname, '..')
       });
       
       // Should complain about invalid format

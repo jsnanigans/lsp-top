@@ -8,9 +8,7 @@ set -e
 echo "Building and starting daemon..."
 pnpm run build >/dev/null 2>&1
 node dist/cli.js daemon restart >/dev/null 2>&1
-sleep 1
-
-cd test-project
+sleep 2
 
 echo "════════════════════════════════════════════════════════════════════════"
 echo "LSP-TOP OUTPUT FORMAT EXAMPLES"
@@ -19,50 +17,50 @@ echo "════════════════════════�
 echo
 echo "1. CHECK (diagnostics) - Compiler-style errors"
 echo "────────────────────────────────────────────────────────────────────────"
-node ../dist/cli.js check src/index.ts | head -2
+node dist/cli.js check test-project/src/index.ts | head -2
 
 echo
 echo "2. DEFINITION - Simple location"
 echo "────────────────────────────────────────────────────────────────────────"
-node ../dist/cli.js def src/index.ts:9:19
+node dist/cli.js def test-project/src/index.ts:1:10
 
 echo
 echo "3. REFERENCES - List of locations"
 echo "────────────────────────────────────────────────────────────────────────"
-node ../dist/cli.js refs src/calculator.ts:4:14 | head -3
+node dist/cli.js refs test-project/src/calculator.ts:4:14 | head -3
 
 echo
 echo "4. SYMBOLS - Hierarchical structure"
 echo "────────────────────────────────────────────────────────────────────────"
-node ../dist/cli.js symbols src/calculator.ts
+node dist/cli.js symbols test-project/src/calculator.ts
 
 echo
 echo "5. SEARCH - Project-wide symbol search"
 echo "────────────────────────────────────────────────────────────────────────"
-node ../dist/cli.js search Calculator --project . | head -3
+node dist/cli.js search Calculator --project test-project | head -3
 
 echo
 echo "6. HOVER - Type information"
 echo "────────────────────────────────────────────────────────────────────────"
-node ../dist/cli.js hover src/calculator.ts:10:3
+node dist/cli.js hover test-project/src/calculator.ts:4:14
 
 echo
 echo "7. PIPING - Count errors by severity"
 echo "────────────────────────────────────────────────────────────────────────"
-echo "Command: lsp-top check src/index.ts | cut -d: -f4 | cut -d' ' -f2 | sort | uniq -c"
-node ../dist/cli.js check src/index.ts | cut -d: -f4 | cut -d' ' -f2 | sort | uniq -c
+echo "Command: lsp-top check test-project/src/index.ts | cut -d: -f4 | cut -d' ' -f2 | sort | uniq -c"
+node dist/cli.js check test-project/src/index.ts | cut -d: -f4 | cut -d' ' -f2 | sort | uniq -c
 
 echo
 echo "8. PIPING - Extract error codes"
 echo "────────────────────────────────────────────────────────────────────────"
-echo "Command: lsp-top check src/index.ts | grep error | cut -d' ' -f3 | cut -d: -f1"
-node ../dist/cli.js check src/index.ts | grep error | cut -d' ' -f3 | cut -d: -f1
+echo "Command: lsp-top check test-project/src/index.ts | grep error | cut -d' ' -f3 | cut -d: -f1"
+node dist/cli.js check test-project/src/index.ts | grep error | cut -d' ' -f3 | cut -d: -f1
 
 echo
 echo "9. JSON OUTPUT - Machine readable"
 echo "────────────────────────────────────────────────────────────────────────"
-echo "Command: lsp-top check src/index.ts --json | jq '.results[0] | {severity, code}'"
-node ../dist/cli.js check src/index.ts --json | jq '.results[0] | {severity, code}' 2>/dev/null || echo "(jq not installed)"
+echo "Command: lsp-top check test-project/src/index.ts --json | jq '.data[0] | {severity, code}'"
+node dist/cli.js check test-project/src/index.ts --json | jq '.data[0] | {severity, code}' 2>/dev/null || echo "(jq not installed)"
 
 echo
 echo "════════════════════════════════════════════════════════════════════════"

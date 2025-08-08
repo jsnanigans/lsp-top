@@ -26,12 +26,12 @@ export function parsePosition(input: string): Position {
   }
 
   const parts = input.split(":");
-  
+
   if (parts.length === 1) {
     // Just a file
     return { file: parts[0] };
   }
-  
+
   if (parts.length === 2) {
     // File and line
     const line = parseInt(parts[1], 10);
@@ -40,22 +40,22 @@ export function parsePosition(input: string): Position {
     }
     return { file: parts[0], line };
   }
-  
+
   if (parts.length === 3) {
     // File, line, and column
     const line = parseInt(parts[1], 10);
     const column = parseInt(parts[2], 10);
-    
+
     if (isNaN(line)) {
       throw new Error(`Invalid line number: ${parts[1]}`);
     }
     if (isNaN(column)) {
       throw new Error(`Invalid column number: ${parts[2]}`);
     }
-    
+
     return { file: parts[0], line, column };
   }
-  
+
   throw new Error(`Invalid position format: ${input}. Use file:line:col`);
 }
 
@@ -81,15 +81,17 @@ export function validateFile(filePath: string): void {
 /**
  * Parse and validate a position
  */
-export function parseAndValidatePosition(input: string): Position & { resolvedPath: string } {
+export function parseAndValidatePosition(
+  input: string,
+): Position & { resolvedPath: string } {
   const pos = parsePosition(input);
   const resolvedPath = resolveFilePath(pos.file);
   validateFile(resolvedPath);
-  
+
   return {
     ...pos,
     file: resolvedPath,
-    resolvedPath
+    resolvedPath,
   };
 }
 

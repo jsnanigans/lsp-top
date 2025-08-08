@@ -69,7 +69,7 @@ function sendRequest(
   request: any,
   options: any,
   commandType: string,
-  context?: any
+  context?: any,
 ): void {
   ensureDaemonRunning(options);
 
@@ -94,9 +94,14 @@ function sendRequest(
               delimiter: options.delimiter,
               noHeaders: options.noHeaders,
               contextLines: options.context ? parseInt(options.context) : 0,
-              align: options.align  // Commander sets this to false with --no-align
+              align: options.align, // Commander sets this to false with --no-align
             };
-            const output = formatter.format(commandType, response.data, formatOptions, context);
+            const output = formatter.format(
+              commandType,
+              response.data,
+              formatOptions,
+              context,
+            );
             if (output) {
               console.log(output);
             }
@@ -146,7 +151,7 @@ program
     try {
       const pos = parsePosition(position);
       const { projectRoot, resolvedFilePath } = resolveProject(pos.file);
-      
+
       if (!projectRoot) {
         console.error(`lsp-top: error: no tsconfig.json found for ${pos.file}`);
         process.exit(1);
@@ -175,7 +180,7 @@ program
     try {
       const pos = parsePosition(position);
       const { projectRoot, resolvedFilePath } = resolveProject(pos.file);
-      
+
       if (!projectRoot) {
         console.error(`lsp-top: error: no tsconfig.json found for ${pos.file}`);
         process.exit(1);
@@ -207,7 +212,7 @@ program
     try {
       const pos = parsePosition(position);
       const { projectRoot, resolvedFilePath } = resolveProject(pos.file);
-      
+
       if (!projectRoot) {
         console.error(`lsp-top: error: no tsconfig.json found for ${pos.file}`);
         process.exit(1);
@@ -235,7 +240,7 @@ program
     try {
       const pos = parsePosition(position);
       const { projectRoot, resolvedFilePath } = resolveProject(pos.file);
-      
+
       if (!projectRoot) {
         console.error(`lsp-top: error: no tsconfig.json found for ${pos.file}`);
         process.exit(1);
@@ -263,7 +268,7 @@ program
     try {
       const pos = parsePosition(position);
       const { projectRoot, resolvedFilePath } = resolveProject(pos.file);
-      
+
       if (!projectRoot) {
         console.error(`lsp-top: error: no tsconfig.json found for ${pos.file}`);
         process.exit(1);
@@ -290,7 +295,7 @@ program
     const options = { ...program.opts(), ...cmdOptions };
     try {
       const { projectRoot, resolvedFilePath } = resolveProject(file);
-      
+
       if (!projectRoot) {
         console.error(`lsp-top: error: no tsconfig.json found for ${file}`);
         process.exit(1);
@@ -319,7 +324,7 @@ program
     const options = { ...program.opts(), ...cmdOptions };
     try {
       const { projectRoot, resolvedFilePath } = resolveProject(file);
-      
+
       if (!projectRoot) {
         console.error(`lsp-top: error: no tsconfig.json found for ${file}`);
         process.exit(1);
@@ -351,7 +356,7 @@ program
     const options = { ...program.opts(), ...cmdOptions };
     try {
       const { projectRoot, resolvedFilePath } = resolveProject(file);
-      
+
       if (!projectRoot) {
         console.error(`lsp-top: error: no tsconfig.json found for ${file}`);
         process.exit(1);
@@ -380,11 +385,15 @@ program
   .action((query: string = "", cmdOptions) => {
     const options = { ...program.opts(), ...cmdOptions };
     try {
-      const searchPath = options.project ? path.resolve(options.project) : process.cwd();
+      const searchPath = options.project
+        ? path.resolve(options.project)
+        : process.cwd();
       const { projectRoot } = resolveProject(searchPath);
-      
+
       if (!projectRoot) {
-        console.error(`lsp-top: error: no tsconfig.json found from ${searchPath}`);
+        console.error(
+          `lsp-top: error: no tsconfig.json found from ${searchPath}`,
+        );
         process.exit(1);
       }
 
@@ -417,7 +426,7 @@ program
     try {
       const pos = parsePosition(position);
       const { projectRoot, resolvedFilePath } = resolveProject(pos.file);
-      
+
       if (!projectRoot) {
         console.error(`lsp-top: error: no tsconfig.json found for ${pos.file}`);
         process.exit(1);
@@ -446,7 +455,7 @@ program
     try {
       const pos = parsePosition(position);
       const { projectRoot, resolvedFilePath } = resolveProject(pos.file);
-      
+
       if (!projectRoot) {
         console.error(`lsp-top: error: no tsconfig.json found for ${pos.file}`);
         process.exit(1);
@@ -479,7 +488,7 @@ program
     try {
       const pos = parsePosition(position);
       const { projectRoot, resolvedFilePath } = resolveProject(pos.file);
-      
+
       if (!projectRoot) {
         console.error(`lsp-top: error: no tsconfig.json found for ${pos.file}`);
         process.exit(1);
@@ -546,8 +555,21 @@ daemon
   .command("status")
   .description("Check daemon status")
   .action(() => {
+    const opts = program.opts();
+
     if (!isDaemonRunning()) {
-      console.log("daemon not running");
+      if (opts.json) {
+        console.log(
+          JSON.stringify({
+            schemaVersion: "v1",
+            ok: false,
+            data: { running: false },
+            error: "daemon not running",
+          }),
+        );
+      } else {
+        console.log("daemon not running");
+      }
       process.exit(1);
     }
 
@@ -558,16 +580,46 @@ daemon
     client.on("data", (data) => {
       try {
         const info = JSON.parse(data.toString());
-        console.log(`daemon running: ${info.sessions} sessions`);
+        if (opts.json) {
+          console.log(
+            JSON.stringify({
+              schemaVersion: "v1",
+              ok: true,
+              data: { running: true, sessions: info.sessions },
+            }),
+          );
+        } else {
+          console.log(`daemon running: ${info.sessions} sessions`);
+        }
         process.exit(0);
       } catch {
-        console.error("lsp-top: error: invalid status response");
+        if (opts.json) {
+          console.log(
+            JSON.stringify({
+              schemaVersion: "v1",
+              ok: false,
+              error: "invalid status response",
+            }),
+          );
+        } else {
+          console.error("lsp-top: error: invalid status response");
+        }
         process.exit(2);
       }
     });
 
     client.on("error", () => {
-      console.error("lsp-top: error: failed to connect to daemon");
+      if (opts.json) {
+        console.log(
+          JSON.stringify({
+            schemaVersion: "v1",
+            ok: false,
+            error: "failed to connect to daemon",
+          }),
+        );
+      } else {
+        console.error("lsp-top: error: failed to connect to daemon");
+      }
       process.exit(2);
     });
   });

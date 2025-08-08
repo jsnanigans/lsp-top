@@ -148,28 +148,41 @@ export class TypeScriptLSP {
     character: number,
   ): Promise<any> {
     const uri = `file://${filePath}`;
+
+    // Ensure document is open and synced
+    await this.ensureDocumentOpen(uri, filePath);
+
+    return await time("typescript.definition", async () =>
+      this.client.getDefinition(uri, line - 1, character - 1),
+    );
+  }
+
+  private async ensureDocumentOpen(
+    uri: string,
+    filePath: string,
+  ): Promise<void> {
     const content = fs.readFileSync(filePath, "utf-8");
 
     if (!this.openDocuments.has(uri)) {
+      // Open the document
       this.client.sendMessage({
         jsonrpc: "2.0",
         method: "textDocument/didOpen",
         params: {
           textDocument: {
             uri,
-            languageId: "typescript",
+            languageId: filePath.endsWith(".tsx")
+              ? "typescriptreact"
+              : "typescript",
             version: 1,
             text: content,
           },
         },
       });
       this.openDocuments.add(uri);
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Wait for document to be processed
+      await new Promise((resolve) => setTimeout(resolve, 200));
     }
-
-    return await time("typescript.definition", async () =>
-      this.client.getDefinition(uri, line - 1, character - 1),
-    );
   }
 
   async getReferences(
@@ -179,24 +192,9 @@ export class TypeScriptLSP {
     includeDeclaration: boolean = false,
   ): Promise<any> {
     const uri = `file://${filePath}`;
-    const content = fs.readFileSync(filePath, "utf-8");
 
-    if (!this.openDocuments.has(uri)) {
-      this.client.sendMessage({
-        jsonrpc: "2.0",
-        method: "textDocument/didOpen",
-        params: {
-          textDocument: {
-            uri,
-            languageId: "typescript",
-            version: 1,
-            text: content,
-          },
-        },
-      });
-      this.openDocuments.add(uri);
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
+    // Ensure document is open and synced
+    await this.ensureDocumentOpen(uri, filePath);
 
     return await time("typescript.references", async () =>
       this.client.getReferences(
@@ -230,7 +228,8 @@ export class TypeScriptLSP {
         },
       });
       this.openDocuments.add(uri);
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Wait longer for document to be fully processed
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
     return await time("typescript.typeDefinition", async () =>
@@ -260,7 +259,8 @@ export class TypeScriptLSP {
         },
       });
       this.openDocuments.add(uri);
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Wait longer for document to be fully processed
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
     return await time("typescript.implementation", async () =>
@@ -286,7 +286,8 @@ export class TypeScriptLSP {
         },
       });
       this.openDocuments.add(uri);
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // Wait longer for document to be fully processed
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
 
     return await time("typescript.documentSymbols", async () =>
@@ -300,24 +301,9 @@ export class TypeScriptLSP {
     character: number,
   ): Promise<any> {
     const uri = `file://${filePath}`;
-    const content = fs.readFileSync(filePath, "utf-8");
 
-    if (!this.openDocuments.has(uri)) {
-      this.client.sendMessage({
-        jsonrpc: "2.0",
-        method: "textDocument/didOpen",
-        params: {
-          textDocument: {
-            uri,
-            languageId: "typescript",
-            version: 1,
-            text: content,
-          },
-        },
-      });
-      this.openDocuments.add(uri);
-      await new Promise((resolve) => setTimeout(resolve, 500));
-    }
+    // Ensure document is open and synced
+    await this.ensureDocumentOpen(uri, filePath);
 
     return await time("typescript.hover", async () =>
       this.client.getHover(uri, line - 1, character - 1),
